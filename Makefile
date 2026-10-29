@@ -97,3 +97,22 @@ env-init:
 	@test -f .env || cp .env.example .env
 	@test -f database/.env || cp database/.env.example database/.env
 
+.PHONY: frontend-install frontend-dev frontend-typecheck frontend-lint frontend-test frontend-build
+
+frontend-install:
+	npm --prefix frontend ci
+
+frontend-dev:
+	npm --prefix frontend run dev
+
+frontend-typecheck:
+	npm --prefix frontend run typecheck
+
+frontend-lint:
+	npm --prefix frontend run lint
+
+frontend-test:
+	npm --prefix frontend test
+
+frontend-build:
+	npm --prefix frontend run build
