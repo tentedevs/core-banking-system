@@ -27,6 +27,15 @@ class SQLAlchemyAccountRepository:
         row = self.session.get(AccountORM, account_id)
         return account_mapper.to_domain(row) if row is not None else None
 
+    def get_by_id_for_update(self, account_id: UUID) -> Account | None:
+        row = self.session.scalar(
+            select(AccountORM)
+            .where(AccountORM.id == account_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return account_mapper.to_domain(row) if row is not None else None
+
     def get_by_account_number(self, account_number: str) -> Account | None:
         row = self.session.scalar(
             select(AccountORM).where(AccountORM.account_number == account_number)

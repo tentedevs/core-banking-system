@@ -4,6 +4,10 @@ from uuid import UUID
 from domain.account.entities import Account
 
 
+class AccountNumberConflict(ValueError):
+    """The database rejected an account number already assigned to another identity."""
+
+
 class AccountRepository(Protocol):
     """Domain-facing port; the caller owns the transaction.
 
@@ -20,6 +24,10 @@ class AccountRepository(Protocol):
         ...
 
     def get_by_id(self, account_id: UUID) -> Account | None: ...
+
+    def get_by_id_for_update(self, account_id: UUID) -> Account | None:
+        """Read current state while holding a row lock until the transaction ends."""
+        ...
 
     def get_by_account_number(self, account_number: str) -> Account | None: ...
 
