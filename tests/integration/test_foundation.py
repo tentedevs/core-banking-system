@@ -15,6 +15,7 @@ def test_migrations_are_repeatable(migrated_engine: Engine) -> None:
     initialize_database(migrated_engine)
     with migrated_engine.connect() as connection:
         assert set(inspect(connection).get_table_names()) == {"alembic_version"}
+        assert inspect(connection).get_table_names(schema="banking") == ["accounts"]
 
 
 def test_api_postgres_session_and_health(isolated_database_settings: Settings) -> None:

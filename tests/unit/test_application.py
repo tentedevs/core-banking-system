@@ -65,4 +65,4 @@ def test_memory_session_dependency_yields_none() -> None:
 def test_import_integrity_and_registered_metadata() -> None:
     for package in ("domain", "application", "ports", "api", "infrastructure"):
         assert importlib.import_module(package).__file__ is not None
-    assert not Base.metadata.tables
+    assert set(Base.metadata.tables) == {"banking.accounts"}
