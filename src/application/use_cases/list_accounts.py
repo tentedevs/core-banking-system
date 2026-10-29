@@ -12,6 +12,10 @@ class ListAccounts:
         with self.unit_of_work as work:
             return self._items(work.accounts, query)
 
+    def execute_with_total(self, query: ListAccountsQuery) -> tuple[list[Account], int]:
+        with self.unit_of_work as work:
+            return self._items(work.accounts, query), work.accounts.count(query.customer_id)
+
     @staticmethod
     def _items(repository: AccountRepository, query: ListAccountsQuery) -> list[Account]:
         if query.customer_id is not None:

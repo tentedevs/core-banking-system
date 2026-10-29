@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from domain.account.entities import Account
@@ -66,3 +66,9 @@ class SQLAlchemyAccountRepository:
         self._validate_pagination(limit, offset)
         query = select(AccountORM).order_by(AccountORM.id).limit(limit).offset(offset)
         return [account_mapper.to_domain(row) for row in self.session.scalars(query)]
+
+    def count(self, customer_id: UUID | None = None) -> int:
+        query = select(func.count()).select_from(AccountORM)
+        if customer_id is not None:
+            query = query.where(AccountORM.customer_id == customer_id)
+        return self.session.scalar(query) or 0

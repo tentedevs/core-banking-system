@@ -36,6 +36,12 @@ class FakeAccountRepository:
         )
         return rows[offset : offset + limit]
 
+    def count(self, customer_id=None):
+        self.calls.append(("count", customer_id))
+        return sum(
+            1 for row in self.rows.values() if customer_id is None or row.customer_id == customer_id
+        )
+
 
 class FakeAccountUnitOfWork:
     def __init__(self) -> None:

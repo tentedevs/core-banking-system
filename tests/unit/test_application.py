@@ -19,7 +19,14 @@ def test_application_creation_and_health() -> None:
         assert app.title == "Core Banking System"
         assert app.state.session_factory is None
         paths = client.get("/openapi.json").json()["paths"]
-        assert set(paths) == {"/health"}
+        assert set(paths) == {
+            "/health",
+            "/accounts",
+            "/accounts/by-number/{account_number}",
+            "/accounts/{account_id}",
+            "/accounts/{account_id}/block",
+            "/accounts/{account_id}/reactivate",
+        }
 
 
 def test_postgres_lifecycle_is_lazy_and_disposes_engine() -> None:
