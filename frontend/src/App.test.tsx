@@ -61,6 +61,61 @@ describe("Frontend independiente de CBS", () => {
     expect(fetchMock.mock.calls.some(([url]) => url === path)).toBe(true);
     expect(screen.getByLabelText("Ruta actual").textContent).toBe(`/accounts/${account.id}`);
   });
+  it("crea una cuenta con solo customer_id y currency y abre su detalle", async () => {
+    fetchMock.mockImplementation((_url, options) => Promise.resolve(json(account, options?.method === "POST" ? 201 : 200)));
+    show("/accounts/new"); const user = userEvent.setup();
+    await user.type(screen.getByLabelText("UUID del cliente"), account.customer_id);
+    await user.click(screen.getByRole("button", { name: "Crear cuenta" }));
+    await screen.findByRole("heading", { name: account.account_number });
+    const post = fetchMock.mock.calls.find(([, options]) => options?.method === "POST");
+    expect(post?.[0]).toBe("/api/accounts");
+    expect(JSON.parse(String(post?.[1]?.body))).toEqual({ customer_id: account.customer_id, currency: "CZK" });
+    expect(screen.getByLabelText("Ruta actual").textContent).toBe(`/accounts/${account.id}`);
+  });
+  it("impide dobles envíos mientras se crea una cuenta", async () => {
+    let complete!: (response: Response) => void;
+    fetchMock.mockReturnValue(new Promise((resolve) => { complete = resolve; }));
+    show("/accounts/new"); const user = userEvent.setup();
+    await user.type(screen.getByLabelText("UUID del cliente"), account.customer_id);
+    await user.click(screen.getByRole("button", { name: "Crear cuenta" }));
+    const button = await screen.findByRole("button", { name: "Creando…" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    await user.click(button); expect(fetchMock).toHaveBeenCalledTimes(1);
+    complete(json({ detail: "Conflicto de número" }, 409));
+    expect(await screen.findByRole("alert")).toBeTruthy();
+  });
+  it("bloquea y reactiva usando únicamente respuestas del backend", async () => {
+    let current = account;
+    fetchMock.mockImplementation((url, options) => {
+      if (options?.method === "PATCH") current = { ...account, status: String(url).endsWith("/block") ? "BLOCKED" : "ACTIVE" };
+      return Promise.resolve(json(current));
+    });
+    show(`/accounts/${account.id}`); const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Bloquear cuenta" }));
+    await user.click(await screen.findByRole("button", { name: "Reactivar cuenta" }));
+    expect(await screen.findByText("Activa")).toBeTruthy();
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === "PATCH").map(([url]) => url)).toEqual([
+      `/api/accounts/${account.id}/block`, `/api/accounts/${account.id}/reactivate`,
+    ]);
+  });
+  it("no ofrece transiciones para una cuenta cerrada", async () => {
+    fetchMock.mockResolvedValue(json({ ...account, status: "CLOSED", closed_at: "2026-10-29" }));
+    show(`/accounts/${account.id}`);
+    expect(await screen.findByText("Cerrada")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Reactivar cuenta" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Bloquear cuenta" })).toBeNull();
+  });
+  it("recarga el estado real tras un 409 y muestra el error", async () => {
+    let conflicted = false;
+    fetchMock.mockImplementation((_url, options) => {
+      if (options?.method === "PATCH") { conflicted = true; return Promise.resolve(json({ detail: "Estado modificado por otra operación" }, 409)); }
+      return Promise.resolve(json({ ...account, status: conflicted ? "BLOCKED" : "ACTIVE" }));
+    });
+    show(`/accounts/${account.id}`);
+    await userEvent.click(await screen.findByRole("button", { name: "Bloquear cuenta" }));
+    expect(await screen.findByRole("button", { name: "Reactivar cuenta" })).toBeTruthy();
+    expect((await screen.findByRole("alert")).textContent).toContain("Estado modificado");
+  });
   it.each([404, 503, 500])("muestra un error HTTP %s sin respuestas ficticias", async (status) => {
     fetchMock.mockResolvedValue(json({ detail: "private SQL" }, status)); show(`/accounts/${account.id}`);
     const alert = await screen.findByRole("alert");
