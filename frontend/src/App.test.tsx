@@ -15,7 +15,12 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 const page = (items: Account[] = [account], total = items.length) => ({ items, pagination: { limit: 20, offset: 0, total_items: total, total_pages: Math.ceil(total / 20) } });
 const fetchMock = vi.fn<typeof fetch>();
 const clients: QueryClient[] = [];
-beforeEach(() => { fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock); });
+beforeEach(() => { fetchMock.mockReset(); vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+  const path = String(input);
+  if (path.includes("/movements?")) return Promise.resolve(json(page([])));
+  if (path.endsWith("/balance")) return Promise.resolve(json({ account_id: account.id, booked_balance: "0.00", available_balance: "0.00", updated_at: account.updated_at }));
+  return fetchMock(input, init);
+}); });
 afterEach(() => { clients.forEach((client) => client.clear()); clients.length = 0; });
 function Location() { const location = useLocation(); return <output aria-label="Ruta actual">{location.pathname}</output>; }
 function show(path = "/accounts") {

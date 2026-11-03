@@ -1,6 +1,6 @@
 # CBS frontend
 
-Independent React/TypeScript/Vite interface for CBS Accounts. All source,
+Independent React/TypeScript/Vite interface for CBS Accounts and Transactions. All source,
 dependencies and lockfiles live in this repository; CRP is not a runtime
 dependency. Requires Node 22.12+; the root `.nvmrc` selects the installed Node 22
 version used for verification.
@@ -23,7 +23,7 @@ Run CBS's backend in another terminal:
 
 ```sh
 make db-up
-make db-init
+make db-migrate
 PERSISTENCE_BACKEND=postgres make dev
 ```
 
@@ -39,8 +39,53 @@ The interface supports:
 There are no production fixtures or mock results. Account numbers and identity
 are assigned by CBS. Customer existence is not yet checked by the backend.
 Currency must be three uppercase letters; registry membership is not verified.
-Balances, credit evaluations, customer synchronization and ledger are not part
-of CBS's current Accounts API and are not displayed.
+Account detail also displays the live balance projection and paginated movements,
+with links to their transactions and preselected deposit/withdrawal/transfer actions.
+Components for balance, monetary display, movements and pagination are shared.
+
+## Transactions
+
+- /transactions: real server-side type/status filters, pagination, refresh, and
+  loading/empty/error states. No synthetic KPI data.
+- /transactions/:transactionId: financial snapshot plus paginated associated
+  movements, including both sides of an internal transfer and empty histories.
+- /transactions/new/deposit, /withdrawal and /transfer: paginated active-account
+  selection, exact decimal strings, matching account currency and explicit review
+  followed by confirmation. The full paths for the latter two also start with
+  /transactions/new. An optional ?account=UUID preselects the source account.
+- Successful operations invalidate affected balances/movements and transaction
+  queries; displayed balances always come from the backend. No optimistic balance
+  arithmetic, floats or locally calculated available funds are used.
+
+The existing API lacked a transaction-scoped movement lookup. This phase adds
+only GET /transactions/{transaction_id}/movements to the backend, using existing
+mappers, repositories, Unit of Work, pagination and 404 behavior. It reads known
+transactions with no movements as an empty page. There are no schema migrations
+or changes to monetary posting. See ../docs/transactions-api.md.
+
+## Idempotency and uncertain outcomes
+
+One cryptographic UUID key is generated when an intentional operation is reviewed.
+The frozen payload and key are saved in sessionStorage before submission; the UI
+cannot submit if this save fails. Confirmation is explicit, duplicate button
+submissions are blocked, and React Query monetary retries are disabled.
+
+Network failures, 5xx responses and incomplete/mismatched success bodies leave the
+request uncertain. The form offers only an explicit retry with the same payload
+and key. Reloading or navigating between operation forms restores the saved
+request, rather than creating another intent. Another operation cannot replace an
+uncertain one. A valid confirmed POSTED response clears the draft and opens the
+transaction detail. A definite business failure can be explicitly retried with
+its original key or replaced by a deliberately new operation. Keys are not rotated
+as a response to network errors or idempotency conflicts.
+
+Session storage is scoped to this browser tab/origin and is not a durable operation
+queue. Closing the tab or clearing browser data loses local recovery information;
+check backend transaction history before replacing any operation whose outcome was
+uncertain. The backend remains the durable source of truth. The transaction detail
+shows the request reference to support inspection. This is an internal local
+console: there are no authentication, authorization or access-control guarantees.
+No ledger, external payments or simulation engine is implemented.
 
 ```sh
 make frontend-typecheck

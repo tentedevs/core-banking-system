@@ -586,3 +586,23 @@
                                                                                                                                                                                                                                                                                                           .form-actions{
                                                                                                                                                                                                                                                                                                             justify-content:space-between}
                                                                                                                                                                                                                                                                                                           }
+
+/* Compact operational views, sharing the Accounts console palette. */
+.operation-links,.transaction-filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.operation-links .button{white-space:nowrap}
+.transaction-filters label{display:flex;gap:8px;align-items:center}
+.money{font-variant-numeric:tabular-nums;white-space:nowrap}
+.status-posted,.direction-credit{background:#e6f1e8;color:#285c3c}
+.status-pending{background:#fff1cd;color:#795817}
+.status-rejected,.direction-debit{background:#fbe9e5;color:#934a3a}
+.status-reversed{background:#ebe9f3;color:#62547c}
+.account-operations{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px;flex-wrap:wrap}
+.account-picker{display:grid;gap:8px;margin-bottom:8px}
+.account-picker select{width:100%}
+.picker-pagination{display:flex;gap:10px;align-items:center;justify-content:flex-end;font-size:12px}
+.picker-pagination .button{padding:4px 12px}
+.confirmation-details{display:grid;gap:16px;margin:22px 0}
+.confirmation-details dt{color:var(--muted);font-size:12px;margin-bottom:5px}
+.confirmation-details dd{margin:0;overflow-wrap:anywhere}
+.form-panel .notice{margin:16px 0}
+@media(max-width:800px){.operation-links{width:100%}.page-heading{flex-wrap:wrap;gap:16px}.transaction-filters{align-items:stretch;flex-direction:column}}

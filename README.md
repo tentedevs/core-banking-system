@@ -249,3 +249,5 @@ outside this repository. There are no datasets, ingestion adapters, ETL, seeds,
 or data-processing dependencies.
 
 Transactions application operations (Phase 5): see [atomic posting and durable idempotency](docs/transaction-use-cases.md). The [Transactions REST API](docs/transactions-api.md) exposes these operations in Phase 6.
+
+CBS frontend Transactions management (Phase 2): see [frontend operations and idempotency](frontend/README.md#transactions).
