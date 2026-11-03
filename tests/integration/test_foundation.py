@@ -19,6 +19,8 @@ def test_migrations_are_repeatable(migrated_engine: Engine) -> None:
             "accounts",
             "transactions",
             "account_movements",
+            "account_balances",
+            "account_balance_openings",
         }
 
 

@@ -70,3 +70,11 @@ Accounts revision, downgrade back to it and re-upgrade while preserving an
 existing account and unrelated tables. Mapper-only validation (including refusal
 to silently round sub-cent values) also runs without a database in
 `tests/unit/test_transaction_mappers.py`.
+
+Balance tests cover atomic Account + zero projection + opening creation,
+explicit historical initialization, duplicate prevention, currency checks,
+insufficient funds and rollback across multiple accounts. Concurrent tests
+observe actual PostgreSQL lock waits and verify that competing debits cannot
+overdraw and credits do not lose updates. They also check lifecycle ownership,
+required locks, posted signed-movement consistency, missing opening metadata,
+and a migration with no guessed backfill or changes to existing Accounts.

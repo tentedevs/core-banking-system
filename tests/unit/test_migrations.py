@@ -6,9 +6,11 @@ from infrastructure.persistence.models import Base
 
 def test_migration_configuration_registers_accounts() -> None:
     config = alembic_config()
-    assert ScriptDirectory.from_config(config).get_heads() == ["0002_create_transactions"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0003_create_account_balances"]
     assert set(Base.metadata.tables) == {
         "banking.accounts",
         "banking.transactions",
         "banking.account_movements",
+        "banking.account_balances",
+        "banking.account_balance_openings",
     }

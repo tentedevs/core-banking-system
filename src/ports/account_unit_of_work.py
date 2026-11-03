@@ -2,6 +2,7 @@ from types import TracebackType
 from typing import Protocol, Self
 
 from ports.account_repository import AccountRepository
+from ports.balance_repository import BalanceRepository
 
 
 class AccountUnitOfWork(Protocol):
@@ -13,6 +14,9 @@ class AccountUnitOfWork(Protocol):
 
     @property
     def accounts(self) -> AccountRepository: ...
+
+    @property
+    def balances(self) -> BalanceRepository: ...
 
     def __enter__(self) -> Self: ...
 

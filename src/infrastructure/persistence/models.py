@@ -21,6 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from domain.account.enums import AccountProductType, AccountStatus
+from domain.account_balance.enums import BalanceInitializationPolicy
 from domain.transaction.enums import MovementDirection, TransactionStatus, TransactionType
 
 
@@ -185,3 +186,60 @@ Index(
     AccountMovementORM.id,
 )
 Index("ix_banking_account_movements_transaction_id", AccountMovementORM.transaction_id)
+
+
+class AccountBalanceORM(Base):
+    __tablename__ = "account_balances"
+    __table_args__ = (
+        PrimaryKeyConstraint("account_id", name="pk_account_balances"),
+        CheckConstraint("available_balance = booked_balance", name="ck_account_balances_available"),
+        CheckConstraint(
+            "booked_balance NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)",
+            name="ck_account_balances_booked",
+        ),
+        CheckConstraint(
+            "available_balance NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)",
+            name="ck_account_balances_finite_available",
+        ),
+        {"schema": "banking"},
+    )
+    account_id: Mapped[UUID] = mapped_column(
+        ForeignKey("banking.accounts.id", name="fk_account_balances_account_id"), primary_key=True
+    )
+    booked_balance: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    available_balance: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class BalanceOpeningORM(Base):
+    __tablename__ = "account_balance_openings"
+    __table_args__ = (
+        PrimaryKeyConstraint("account_id", name="pk_account_balance_openings"),
+        CheckConstraint(
+            "opening_balance NOT IN ('NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric)",
+            name="ck_account_balance_openings_finite",
+        ),
+        CheckConstraint(
+            "policy = 'HISTORICAL' OR opening_balance >= 0",
+            name="ck_account_balance_openings_negative_policy",
+        ),
+        {"schema": "banking"},
+    )
+    account_id: Mapped[UUID] = mapped_column(
+        ForeignKey(
+            "banking.account_balances.account_id", name="fk_account_balance_openings_balance"
+        ),
+        primary_key=True,
+    )
+    opening_balance: Mapped[Decimal] = mapped_column(Numeric(18, 2))
+    policy: Mapped[BalanceInitializationPolicy] = mapped_column(
+        Enum(
+            BalanceInitializationPolicy,
+            length=20,
+            native_enum=False,
+            create_constraint=True,
+            validate_strings=True,
+            name="ck_account_balance_openings_policy",
+        )
+    )
+    initialized_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 
+from application.account_balance_service import AccountBalanceService
 from application.account_messages import CreateAccountCommand
 from application.account_numbers import InternalAccountNumberGenerator
 from domain.account.entities import Account
@@ -27,5 +28,8 @@ class CreateAccount:
         )
         with self.unit_of_work as work:
             work.accounts.save(account)
+            AccountBalanceService(work.accounts, work.balances).initialize(
+                account.id, currency=account.currency
+            )
             work.commit()
         return account

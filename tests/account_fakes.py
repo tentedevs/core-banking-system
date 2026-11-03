@@ -1,6 +1,11 @@
 """Test doubles only; production persistence continues to use PostgreSQL."""
 
+from decimal import Decimal
+
 from domain.account.entities import Account
+from domain.account_balance.entities import AccountBalance, BalanceOpening
+from domain.account_balance.enums import BalanceInitializationPolicy
+from ports.balance_repository import BalanceAlreadyInitialized, PostedMovementSummary
 
 
 class FakeAccountRepository:
@@ -43,9 +48,50 @@ class FakeAccountRepository:
         )
 
 
+class FakeBalanceRepository:
+    def __init__(self):
+        self.rows = {}
+        self.openings = {}
+        self.summaries = {}
+        self.calls = []
+
+    def get_by_account_id(self, account_id):
+        return self.rows.get(account_id)
+
+    def create_initial_balance(
+        self,
+        account_id,
+        initial_balance=Decimal("0"),
+        *,
+        policy=BalanceInitializationPolicy.ORDINARY,
+    ):
+        if account_id in self.rows:
+            raise BalanceAlreadyInitialized("Account balance is already initialized")
+        balance = AccountBalance.create_initial(account_id, initial_balance, policy=policy)
+        self.rows[account_id] = balance
+        self.openings[account_id] = BalanceOpening(
+            account_id, initial_balance, policy, balance.updated_at
+        )
+        return balance
+
+    def get_for_update(self, account_id):
+        self.calls.append(account_id)
+        return self.rows.get(account_id)
+
+    def persist_updated_balance(self, balance):
+        self.rows[balance.account_id] = balance
+
+    def get_opening(self, account_id):
+        return self.openings.get(account_id)
+
+    def get_posted_movement_summary(self, account_id, currency):
+        return self.summaries.get(account_id, PostedMovementSummary(Decimal("0"), 0))
+
+
 class FakeAccountUnitOfWork:
     def __init__(self) -> None:
         self.accounts = FakeAccountRepository()
+        self.balances = FakeBalanceRepository()
         self.commits = 0
         self.entries = 0
         self.exits = 0
@@ -54,6 +100,8 @@ class FakeAccountUnitOfWork:
     def __enter__(self):
         self.entries += 1
         self._before = dict(self.accounts.rows)
+        self._balances_before = dict(self.balances.rows)
+        self._openings_before = dict(self.balances.openings)
         self._committed = False
         return self
 
@@ -67,6 +115,8 @@ class FakeAccountUnitOfWork:
         self.exits += 1
         if not self._committed:
             self.accounts.rows = self._before
+            self.balances.rows = self._balances_before
+            self.balances.openings = self._openings_before
 
 
 class FixedAccountNumberGenerator:

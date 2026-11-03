@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from infrastructure.persistence.repositories.account_repository import SQLAlchemyAccountRepository
+from infrastructure.persistence.repositories.balance_repository import SQLAlchemyBalanceRepository
 from ports.account_repository import AccountNumberConflict
 
 
@@ -16,6 +17,13 @@ class SQLAlchemyAccountUnitOfWork:
         self.sessions = sessions
         self._session: Session | None = None
         self._accounts: SQLAlchemyAccountRepository | None = None
+        self._balances: SQLAlchemyBalanceRepository | None = None
+
+    @property
+    def balances(self) -> SQLAlchemyBalanceRepository:
+        if self._balances is None:
+            raise RuntimeError("Unit of work must be entered before accessing balances")
+        return self._balances
 
     @property
     def accounts(self) -> SQLAlchemyAccountRepository:
@@ -28,6 +36,7 @@ class SQLAlchemyAccountUnitOfWork:
             raise RuntimeError("Unit of work is already active")
         self._session = self.sessions()
         self._accounts = SQLAlchemyAccountRepository(self._session)
+        self._balances = SQLAlchemyBalanceRepository(self._session)
         return self
 
     def commit(self) -> None:
@@ -52,6 +61,7 @@ class SQLAlchemyAccountUnitOfWork:
             finally:
                 self._session = None
                 self._accounts = None
+                self._balances = None
         # Include errors from autoflush, explicit flush, and commit in this boundary.
         if (
             isinstance(exc_value, IntegrityError)
