@@ -1,3 +1,5 @@
+import { DemoCustomerProvider } from "./features/customer-banking/context";
+import { CustomerBanking } from "./features/customer-banking/CustomerBanking";
 import { AccountBalance, Movements } from "./components/Banking";
 import { TransactionsPage, TransactionDetail, OperationLinks } from "./pages/Transactions";
 import { MonetaryOperationRoute } from "./pages/MonetaryOperation";
@@ -16,13 +18,20 @@ function Loading() { return <p role="status" className="loading">Cargando cuenta
 function date(value: string) { return new Intl.DateTimeFormat("es", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`)); }
 
 export function App() {
+  return <DemoCustomerProvider><Routes><Route path="/banking/*" element={<CustomerBanking />} /><Route path="/admin/*" element={<AdminRedirect />} /><Route path="/*" element={<Administration />} /></Routes></DemoCustomerProvider>;
+}
+function AdminRedirect() {
+  const location = useLocation();
+  return <Navigate replace to={`${location.pathname.replace(/^\/admin/, "") || "/accounts"}${location.search}${location.hash}`} />;
+}
+function Administration() {
   const location = useLocation();
   return <div className="shell">
     <aside className="sidebar">
       <Link to="/accounts" className="brand"><span className="brand-icon">C</span><span>CBS<small>CORE BANKING SYSTEM</small></span></Link>
       <p className="nav-label">ESPACIO DE TRABAJO</p>
       <nav aria-label="Navegación principal"><NavLink to="/accounts">▤ <span>Cuentas</span><span aria-hidden="true">↗</span></NavLink><NavLink to="/transactions">⇄ <span>Transacciones</span><span aria-hidden="true">↗</span></NavLink></nav>
-      <div className="sidebar-footer"><span>Core Banking</span><small>Administración bancaria</small></div>
+      <Link className="experience-switch" to="/banking">Banca cliente · DEMO →</Link><div className="sidebar-footer"><span>Core Banking</span><small>Administración bancaria</small></div>
     </aside>
     <div className="workspace"><header className="topbar"><span>Operaciones <span className="separator">/</span> {location.pathname.startsWith("/transactions") ? "Transacciones" : "Cuentas"}</span><span className="workspace-tag">CBS · Entorno local</span></header>
       <main><Routes>

@@ -251,3 +251,6 @@ or data-processing dependencies.
 Transactions application operations (Phase 5): see [atomic posting and durable idempotency](docs/transaction-use-cases.md). The [Transactions REST API](docs/transactions-api.md) exposes these operations in Phase 6.
 
 CBS frontend Transactions management (Phase 2): see [frontend operations and idempotency](frontend/README.md#transactions).
+
+Customer Banking local DEMO (frontend Phase 3) is available at `/banking` alongside
+the existing administrative console. See [customer experience and contract limits](frontend/README.md#customer-banking--phase-3-local-demo).

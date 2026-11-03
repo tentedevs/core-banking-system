@@ -98,3 +98,80 @@ Frontend tests use test-only HTTP fixtures and the real client, routes and React
 Query lifecycle. Production output is in frontend/dist. Deployment needs a
 server with SPA fallback and an `/api` reverse proxy to CBS; this change prepares
 and verifies local development and the build, without publishing a deployment.
+
+## Customer Banking — Phase 3 (local DEMO)
+
+The same application now provides two layouts:
+
+- Administration: existing /accounts and /transactions routes, unchanged bookmarks.
+  /admin/accounts and /admin/transactions (including subpaths) redirect to those
+  original URLs, preserving query parameters and hashes.
+- Customer Banking: /banking, /banking/accounts/:accountId,
+  /banking/transactions/:transactionId, and /banking/operations/:operation
+  (deposit, withdrawal or transfer). Explicit links switch between experiences.
+
+DemoCustomerProvider centralizes an in-memory customer reference; selection is
+not persisted. Customer-specific queries use banking/customer-reference keys.
+Changing selection cancels/removes those queries, remounts the customer view and
+returns to /banking. Old responses cannot repopulate another customer's view.
+The route/data hooks form the presentation-context boundary that a future real
+session adapter can replace.
+
+CBS has no Customers API. The selector derives unique references from actual
+paginated Accounts data (100 per directory page, with an explicit load-more
+button). Names and customer existence are not verified against CRP. No customer
+records or identities are invented, and no backend change was needed. Clients
+without any account cannot be discovered through this contract. A previously
+selected reference whose accounts disappear displays a real empty state.
+
+The selected customer's complete account pages are fetched with the supported
+customer_id filter and checked for matching backend associations. Dashboard
+booked/available totals sum returned balance projections using integer cents
+(BigInt), grouped by currency; there is no FX or Number arithmetic on money.
+Totals include all returned account statuses and display the separate ACTIVE
+count. A missing/failed balance suppresses the affected currency's total rather
+than presenting a partial sum as complete. Individual balances remain server
+projections, and no financial posting or balance update is calculated locally.
+
+Recent movements fetch at most 5 rows per associated account, deduplicate IDs,
+order by backend booked_at descending with an ID tie-breaker, and show at most
+10 merged results. This is a sample, not global history pagination. Each account
+detail reuses the full server-paginated movement component. Different fetches
+are not an atomic snapshot; use refresh after concurrent changes.
+
+Account detail and operation source routes verify association with the current
+selected customer's Accounts result before rendering. Transaction detail fetches
+its movements, retains only associated account IDs, and shows the transaction
+snapshot only if a relevant movement exists. It never displays the other side's
+account details, counterparty metadata or movements. A transaction with zero
+movements cannot be attributed to a customer using existing contracts, so it
+shows a context-mismatch message; Administration can still inspect it.
+
+The Phase 2 MonetaryOperation form is shared by both experiences. In Customer
+Banking, its source picker contains only associated accounts. Transfers resolve
+a user-entered destination CBS account number through the existing by-number
+lookup, then send the required destination UUID internally without displaying
+that account's customer reference, UUID, balances or history. Deposits and
+withdrawals are visibly simulated. Confirmation, exact decimals, backend
+validation, idempotency, uncertain-response recovery and cache refresh are reused.
+
+Customer presentation metadata is saved only alongside an actual pending
+monetary intent to preserve recovery. It is never sent as proof of identity.
+Changing customer clears the visible form but does not erase a potentially
+submitted request or rotate its key. A saved intent from another context reveals
+no payload in Customer Banking; it can be reviewed explicitly in Administration.
+A late monetary completion refreshes caches but cannot navigate the newly selected
+customer into the old operation. Browser-tab recovery limitations from Phase 2
+still apply.
+
+This is explicitly a LOCAL DEMO, without authentication or authorization. Neither
+the selector nor browser-side filtering enforces ownership. The backend still
+allows administrative access to all banking data; future production security
+must enforce account/transaction/movement ownership on the server. Do not expose
+this demo externally with real customer data.
+
+Tests in CustomerBanking.test.tsx cover customer switching, stale/late responses,
+backend filtering, no-account states, exact multi-currency totals, recent movement
+merging, account/transaction context checks, counterpart filtering, all operations,
+backend errors, pending-key isolation, identity lifetime and administrative routes.
+The previous Accounts and Transactions suites remain part of the same test run.
