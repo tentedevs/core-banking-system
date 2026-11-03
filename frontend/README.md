@@ -175,3 +175,5 @@ backend filtering, no-account states, exact multi-currency totals, recent moveme
 merging, account/transaction context checks, counterpart filtering, all operations,
 backend errors, pending-key isolation, identity lifetime and administrative routes.
 The previous Accounts and Transactions suites remain part of the same test run.
+
+Both Administration and Customer Banking menus include a Credit Risk Platform link. It opens the independent CRP frontend in a new tab (default http://localhost:5173), preserving the current CBS page and demo selection. Set VITE_CREDIT_RISK_URL in frontend/.env and restart Vite to use another CRP address. CRP must be started separately.

@@ -1,3 +1,4 @@
+import { CreditRiskLink } from "./components/CreditRiskLink";
 import { DemoCustomerProvider } from "./features/customer-banking/context";
 import { CustomerBanking } from "./features/customer-banking/CustomerBanking";
 import { AccountBalance, Movements } from "./components/Banking";
@@ -30,7 +31,7 @@ function Administration() {
     <aside className="sidebar">
       <Link to="/accounts" className="brand"><span className="brand-icon">C</span><span>CBS<small>CORE BANKING SYSTEM</small></span></Link>
       <p className="nav-label">ESPACIO DE TRABAJO</p>
-      <nav aria-label="Navegación principal"><NavLink to="/accounts">▤ <span>Cuentas</span><span aria-hidden="true">↗</span></NavLink><NavLink to="/transactions">⇄ <span>Transacciones</span><span aria-hidden="true">↗</span></NavLink></nav>
+      <nav aria-label="Navegación principal"><NavLink to="/accounts">▤ <span>Cuentas</span><span aria-hidden="true">↗</span></NavLink><NavLink to="/transactions">⇄ <span>Transacciones</span><span aria-hidden="true">↗</span></NavLink><CreditRiskLink /></nav>
       <Link className="experience-switch" to="/banking">Banca cliente · DEMO →</Link><div className="sidebar-footer"><span>Core Banking</span><small>Administración bancaria</small></div>
     </aside>
     <div className="workspace"><header className="topbar"><span>Operaciones <span className="separator">/</span> {location.pathname.startsWith("/transactions") ? "Transacciones" : "Cuentas"}</span><span className="workspace-tag">CBS · Entorno local</span></header>
