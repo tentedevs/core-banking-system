@@ -284,7 +284,8 @@ def test_unexpected_database_errors_propagate(
 ) -> None:
     with sessions() as session:
         # Deterministic database error independent of server timings or sleeps.
-        session.execute(text("DROP TABLE banking.accounts"))
+        # Renaming preserves referencing FKs while making the expected table unavailable.
+        session.execute(text("ALTER TABLE banking.accounts RENAME TO unavailable_accounts"))
         repository = SQLAlchemyAccountRepository(session)
         actions: dict[str, Callable[[], object]] = {
             "save": lambda: repository.save(account),

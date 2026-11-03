@@ -29,6 +29,8 @@ corebanking on localhost:5433. SQLAlchemy checks SELECT 1 with the actual user,
 password and database. Unlike pg_isready, this validates authentication and query
 execution. All migrations remain explicit; `0001_create_accounts` creates
 `banking.accounts` for the `SAVINGS_ACCOUNT` product.
+Revision `0002_create_transactions` adds `banking.transactions` and
+`banking.account_movements` without balances or ledger tables.
 
 ## Isolated service test
 

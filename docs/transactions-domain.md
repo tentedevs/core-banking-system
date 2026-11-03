@@ -11,6 +11,9 @@ in this MVP. Future application operations will coordinate movements and an
 AccountBalance projection atomically through PostgreSQL; neither is implemented
 here.
 
+Phase 2 adds a separate [persistence representation](transactions-persistence.md),
+leaving these domain entities and their precision rules unchanged.
+
 ## Transactions
 
 BankingTransaction contains the requested identity, type, status, monetary and
