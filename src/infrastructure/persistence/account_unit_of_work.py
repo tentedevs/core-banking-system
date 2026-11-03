@@ -14,6 +14,7 @@ from infrastructure.persistence.repositories.transaction_repository import (
     SQLAlchemyTransactionRepository,
 )
 from ports.account_repository import AccountNumberConflict
+from ports.transaction_repository import IdempotencyConflict
 
 
 class SQLAlchemyAccountUnitOfWork:
@@ -93,3 +94,14 @@ class SQLAlchemyAccountUnitOfWork:
             and exc_value.orig.diag.constraint_name == "uq_accounts_account_number"
         ):
             raise AccountNumberConflict("Account number is already in use") from exc_value
+        if (
+            isinstance(exc_value, IntegrityError)
+            and isinstance(exc_value.orig, UniqueViolation)
+            and exc_value.orig.diag.constraint_name
+            in {
+                "uq_transactions_idempotency_key",
+                "pk_transaction_requests",
+                "uq_transaction_requests_transaction_id",
+            }
+        ):
+            raise IdempotencyConflict("Idempotency request is already recorded") from exc_value

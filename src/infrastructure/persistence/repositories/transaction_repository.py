@@ -1,14 +1,15 @@
+import hashlib
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from domain.transaction.entities import BankingTransaction
 from domain.transaction.enums import TransactionStatus, TransactionType
 from infrastructure.persistence.mappers import transaction_mapper
-from infrastructure.persistence.models import TransactionORM
+from infrastructure.persistence.models import TransactionORM, TransactionRequestORM
 from infrastructure.persistence.repositories.account_repository import SQLAlchemyAccountRepository
-from ports.transaction_repository import TransactionPersistenceConflict
+from ports.transaction_repository import IdempotencyRecord, TransactionPersistenceConflict
 
 
 class SQLAlchemyTransactionRepository:
@@ -44,6 +45,26 @@ class SQLAlchemyTransactionRepository:
             select(TransactionORM).where(TransactionORM.idempotency_key == key)
         )
         return transaction_mapper.to_domain(row) if row is not None else None
+
+    def lock_idempotency_key(self, key: str) -> None:
+        # Stable across processes; collisions serialize unrelated keys harmlessly.
+        # Transaction-scoped locks also cover the absence of a request row.
+        lock_id = int.from_bytes(hashlib.sha256(key.encode()).digest()[:8], signed=True)
+        self.session.execute(text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": lock_id})
+
+    def get_request(self, key: str) -> IdempotencyRecord | None:
+        row = self.session.get(TransactionRequestORM, key)
+        return IdempotencyRecord(row.fingerprint, row.transaction_id) if row is not None else None
+
+    def record_request(self, key: str, record: IdempotencyRecord) -> None:
+        self.session.add(
+            TransactionRequestORM(
+                idempotency_key=key,
+                fingerprint=record.fingerprint,
+                transaction_id=record.transaction_id,
+            )
+        )
+        self.session.flush()
 
     def list_all(
         self,

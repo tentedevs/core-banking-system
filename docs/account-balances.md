@@ -112,8 +112,8 @@ movement in another currency also raises an error instead of combining currencie
 The result includes opening, signed total, current booked balance and consistency.
 
 Credit/debit only coordinate the projection: they do not create BankingTransaction
-or AccountMovement records. A future transaction executor must write those audit records and the projection
-within the same Unit of Work. A projection change
+or AccountMovement records. The Phase 5 transaction executor writes those audit records and the projection
+within the same Unit of Work (see transaction-use-cases.md). A projection change
 without corresponding posted movements is intentionally reported as inconsistent.
 All future writers must follow the same account locking protocol; raw SQL can
 bypass these application policies and does not provide those workflow guarantees.

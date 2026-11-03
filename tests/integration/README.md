@@ -78,3 +78,5 @@ observe actual PostgreSQL lock waits and verify that competing debits cannot
 overdraw and credits do not lose updates. They also check lifecycle ownership,
 required locks, posted signed-movement consistency, missing opening metadata,
 and a migration with no guessed backfill or changes to existing Accounts.
+
+Phase 5 `test_transaction_use_cases.py` covers monetary posting, durable request receipts, rollback at each write stage, real PostgreSQL lock waits for duplicate requests, overspending, opposite transfers and blocking races, plus pagination and reconciliation.

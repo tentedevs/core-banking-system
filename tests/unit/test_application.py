@@ -78,4 +78,5 @@ def test_import_integrity_and_registered_metadata() -> None:
         "banking.account_movements",
         "banking.account_balances",
         "banking.account_balance_openings",
+        "banking.transaction_requests",
     }

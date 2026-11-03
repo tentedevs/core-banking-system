@@ -10,3 +10,5 @@ downgrade removes only these two tables and their indexes, retaining Accounts.
 `0003_create_account_balances.py` adds balance projections and explicit opening
 metadata. It does not guess backfill values for existing accounts or introduce
 ledger tables. Its downgrade leaves Accounts, Transactions and Movements intact.
+
+`0004_create_transaction_requests` stores durable idempotency fingerprints linked to transactions. Downgrade preserves financial records but removes receipts; existing keys then remain conflicts until investigated.

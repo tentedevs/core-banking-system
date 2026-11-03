@@ -29,6 +29,29 @@ class Base(DeclarativeBase):
     pass
 
 
+class TransactionRequestORM(Base):
+    """Immutable idempotency receipt, committed with its financial operation."""
+
+    __tablename__ = "transaction_requests"
+    __table_args__ = (
+        PrimaryKeyConstraint("idempotency_key", name="pk_transaction_requests"),
+        UniqueConstraint("transaction_id", name="uq_transaction_requests_transaction_id"),
+        CheckConstraint("idempotency_key ~ '[^[:space:]]'", name="ck_transaction_requests_key"),
+        CheckConstraint(
+            "fingerprint COLLATE \"C\" ~ '^[0-9a-f]{64}$'",
+            name="ck_transaction_requests_fingerprint",
+        ),
+        {"schema": "banking"},
+    )
+
+    idempotency_key: Mapped[str] = mapped_column(String(100), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    transaction_id: Mapped[UUID] = mapped_column(
+        ForeignKey("banking.transactions.id", name="fk_transaction_requests_transaction_id"),
+        nullable=False,
+    )
+
+
 class AccountORM(Base):
     __tablename__ = "accounts"
     __table_args__ = (
