@@ -88,10 +88,85 @@ class FakeBalanceRepository:
         return self.summaries.get(account_id, PostedMovementSummary(Decimal("0"), 0))
 
 
+class FakeTransactionRepository:
+    def __init__(self):
+        self.rows = {}
+        self.requests = {}
+        self.calls = []
+
+    def add(self, transaction):
+        self.rows[transaction.id] = transaction
+
+    def post(self, transaction):
+        self.rows[transaction.id] = transaction
+
+    def get_by_id(self, transaction_id):
+        return self.rows.get(transaction_id)
+
+    def get_by_idempotency_key(self, key):
+        return next((row for row in self.rows.values() if row.idempotency_key == key), None)
+
+    def lock_idempotency_key(self, key):
+        self.calls.append(key)
+
+    def get_request(self, key):
+        return self.requests.get(key)
+
+    def record_request(self, key, record):
+        self.requests[key] = record
+
+    def list_all(self, limit=50, offset=0, *, transaction_type=None, status=None):
+        rows = [
+            row
+            for row in self.rows.values()
+            if (transaction_type is None or row.transaction_type == transaction_type)
+            and (status is None or row.status == status)
+        ]
+        rows.sort(key=lambda row: row.id)
+        rows.sort(key=lambda row: row.created_at, reverse=True)
+        return rows[offset : offset + limit]
+
+    def count(self, *, transaction_type=None, status=None):
+        return sum(
+            1
+            for row in self.rows.values()
+            if (transaction_type is None or row.transaction_type == transaction_type)
+            and (status is None or row.status == status)
+        )
+
+
+class FakeMovementRepository:
+    def __init__(self):
+        self.rows = {}
+
+    def add(self, movement):
+        self.rows[movement.id] = movement
+
+    def list_by_account(self, account_id, limit=50, offset=0):
+        rows = [row for row in self.rows.values() if row.account_id == account_id]
+        rows.sort(key=lambda row: row.id)
+        rows.sort(key=lambda row: row.booked_at, reverse=True)
+        return rows[offset : offset + limit]
+
+    def count_by_account(self, account_id):
+        return sum(row.account_id == account_id for row in self.rows.values())
+
+    def list_by_transaction(self, transaction_id, limit=50, offset=0):
+        rows = [row for row in self.rows.values() if row.transaction_id == transaction_id]
+        rows.sort(key=lambda row: row.id)
+        rows.sort(key=lambda row: row.booked_at, reverse=True)
+        return rows[offset : offset + limit]
+
+    def count_by_transaction(self, transaction_id):
+        return sum(row.transaction_id == transaction_id for row in self.rows.values())
+
+
 class FakeAccountUnitOfWork:
     def __init__(self) -> None:
         self.accounts = FakeAccountRepository()
         self.balances = FakeBalanceRepository()
+        self.transactions = FakeTransactionRepository()
+        self.movements = FakeMovementRepository()
         self.commits = 0
         self.entries = 0
         self.exits = 0
@@ -102,6 +177,9 @@ class FakeAccountUnitOfWork:
         self._before = dict(self.accounts.rows)
         self._balances_before = dict(self.balances.rows)
         self._openings_before = dict(self.balances.openings)
+        self._transactions_before = dict(self.transactions.rows)
+        self._requests_before = dict(self.transactions.requests)
+        self._movements_before = dict(self.movements.rows)
         self._committed = False
         return self
 
@@ -114,6 +192,9 @@ class FakeAccountUnitOfWork:
     def __exit__(self, exc_type, exc_value, traceback):
         self.exits += 1
         if not self._committed:
+            self.transactions.rows = self._transactions_before
+            self.transactions.requests = self._requests_before
+            self.movements.rows = self._movements_before
             self.accounts.rows = self._before
             self.balances.rows = self._balances_before
             self.balances.openings = self._openings_before

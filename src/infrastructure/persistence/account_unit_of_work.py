@@ -5,8 +5,14 @@ from psycopg.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from infrastructure.persistence.repositories.account_movement_repository import (
+    SQLAlchemyAccountMovementRepository,
+)
 from infrastructure.persistence.repositories.account_repository import SQLAlchemyAccountRepository
 from infrastructure.persistence.repositories.balance_repository import SQLAlchemyBalanceRepository
+from infrastructure.persistence.repositories.transaction_repository import (
+    SQLAlchemyTransactionRepository,
+)
 from ports.account_repository import AccountNumberConflict
 
 
@@ -18,6 +24,20 @@ class SQLAlchemyAccountUnitOfWork:
         self._session: Session | None = None
         self._accounts: SQLAlchemyAccountRepository | None = None
         self._balances: SQLAlchemyBalanceRepository | None = None
+        self._transactions: SQLAlchemyTransactionRepository | None = None
+        self._movements: SQLAlchemyAccountMovementRepository | None = None
+
+    @property
+    def transactions(self) -> SQLAlchemyTransactionRepository:
+        if self._transactions is None:
+            raise RuntimeError("Unit of work must be entered before accessing transactions")
+        return self._transactions
+
+    @property
+    def movements(self) -> SQLAlchemyAccountMovementRepository:
+        if self._movements is None:
+            raise RuntimeError("Unit of work must be entered before accessing movements")
+        return self._movements
 
     @property
     def balances(self) -> SQLAlchemyBalanceRepository:
@@ -37,6 +57,8 @@ class SQLAlchemyAccountUnitOfWork:
         self._session = self.sessions()
         self._accounts = SQLAlchemyAccountRepository(self._session)
         self._balances = SQLAlchemyBalanceRepository(self._session)
+        self._transactions = SQLAlchemyTransactionRepository(self._session)
+        self._movements = SQLAlchemyAccountMovementRepository(self._session)
         return self
 
     def commit(self) -> None:
@@ -62,6 +84,8 @@ class SQLAlchemyAccountUnitOfWork:
                 self._session = None
                 self._accounts = None
                 self._balances = None
+                self._transactions = None
+                self._movements = None
         # Include errors from autoflush, explicit flush, and commit in this boundary.
         if (
             isinstance(exc_value, IntegrityError)

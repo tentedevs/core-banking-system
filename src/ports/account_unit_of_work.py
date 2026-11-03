@@ -1,8 +1,10 @@
 from types import TracebackType
 from typing import Protocol, Self
 
+from ports.account_movement_repository import AccountMovementRepository
 from ports.account_repository import AccountRepository
 from ports.balance_repository import BalanceRepository
+from ports.transaction_repository import TransactionRepository
 
 
 class AccountUnitOfWork(Protocol):
@@ -17,6 +19,12 @@ class AccountUnitOfWork(Protocol):
 
     @property
     def balances(self) -> BalanceRepository: ...
+
+    @property
+    def transactions(self) -> TransactionRepository: ...
+
+    @property
+    def movements(self) -> AccountMovementRepository: ...
 
     def __enter__(self) -> Self: ...
 
