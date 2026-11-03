@@ -61,3 +61,24 @@ rejected transitions and invalid input, no read commits and released connections
 The API does not run migrations itself; the existing migrated fixture prepares
 the disposable database. HTTP tests without PostgreSQL live in
 `tests/unit/test_accounts_api.py` and use FastAPI dependency overrides.
+
+Transactions persistence tests reuse the same PostgreSQL isolation. They verify
+transaction/movement round-trips, exact Decimal values, nullable metadata,
+reversal and account/transaction references, database checks, unique idempotency
+keys and descending indexes. Incremental migration tests upgrade from the
+Accounts revision, downgrade back to it and re-upgrade while preserving an
+existing account and unrelated tables. Mapper-only validation (including refusal
+to silently round sub-cent values) also runs without a database in
+`tests/unit/test_transaction_mappers.py`.
+
+Balance tests cover atomic Account + zero projection + opening creation,
+explicit historical initialization, duplicate prevention, currency checks,
+insufficient funds and rollback across multiple accounts. Concurrent tests
+observe actual PostgreSQL lock waits and verify that competing debits cannot
+overdraw and credits do not lose updates. They also check lifecycle ownership,
+required locks, posted signed-movement consistency, missing opening metadata,
+and a migration with no guessed backfill or changes to existing Accounts.
+
+Phase 5 `test_transaction_use_cases.py` covers monetary posting, durable request receipts, rollback at each write stage, real PostgreSQL lock waits for duplicate requests, overspending, opposite transfers and blocking races, plus pagination and reconciliation.
+
+Phase 6 `test_transactions_api.py` covers all seven HTTP endpoints against isolated PostgreSQL, idempotent retries and concurrent requests, filtered pagination/counts, inactive accounts, failures and session cleanup.

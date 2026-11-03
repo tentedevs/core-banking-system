@@ -7,9 +7,17 @@ from sqlalchemy.orm import Session, sessionmaker
 from application.account_numbers import InternalAccountNumberGenerator
 from application.use_cases.block_account import BlockAccount
 from application.use_cases.create_account import CreateAccount
+from application.use_cases.create_deposit import CreateDeposit
+from application.use_cases.create_transfer import CreateTransfer
+from application.use_cases.create_withdrawal import CreateWithdrawal
 from application.use_cases.get_account import GetAccount
+from application.use_cases.get_account_balance import GetAccountBalance
 from application.use_cases.get_account_by_number import GetAccountByNumber
+from application.use_cases.get_transaction import GetTransaction
+from application.use_cases.list_account_movements import ListAccountMovements
 from application.use_cases.list_accounts import ListAccounts
+from application.use_cases.list_transaction_movements import ListTransactionMovements
+from application.use_cases.list_transactions import ListTransactions
 from application.use_cases.reactivate_account import ReactivateAccount
 from infrastructure.persistence.account_unit_of_work import SQLAlchemyAccountUnitOfWork
 from ports.account_number_generator import AccountNumberGenerator
@@ -73,3 +81,35 @@ def get_block_account(work: AccountWorkDependency) -> BlockAccount:
 
 def get_reactivate_account(work: AccountWorkDependency) -> ReactivateAccount:
     return ReactivateAccount(work)
+
+
+def get_create_deposit(work: AccountWorkDependency) -> CreateDeposit:
+    return CreateDeposit(work)
+
+
+def get_create_withdrawal(work: AccountWorkDependency) -> CreateWithdrawal:
+    return CreateWithdrawal(work)
+
+
+def get_create_transfer(work: AccountWorkDependency) -> CreateTransfer:
+    return CreateTransfer(work)
+
+
+def get_get_transaction(work: AccountWorkDependency) -> GetTransaction:
+    return GetTransaction(work)
+
+
+def get_list_transactions(work: AccountWorkDependency) -> ListTransactions:
+    return ListTransactions(work)
+
+
+def get_list_account_movements(work: AccountWorkDependency) -> ListAccountMovements:
+    return ListAccountMovements(work)
+
+
+def get_get_account_balance(work: AccountWorkDependency) -> GetAccountBalance:
+    return GetAccountBalance(work)
+
+
+def get_list_transaction_movements(work: AccountWorkDependency) -> ListTransactionMovements:
+    return ListTransactionMovements(work)

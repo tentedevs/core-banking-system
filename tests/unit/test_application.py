@@ -21,6 +21,14 @@ def test_application_creation_and_health() -> None:
         paths = client.get("/openapi.json").json()["paths"]
         assert set(paths) == {
             "/health",
+            "/transactions",
+            "/transactions/{transaction_id}",
+            "/transactions/{transaction_id}/movements",
+            "/transactions/deposits",
+            "/transactions/withdrawals",
+            "/transactions/transfers",
+            "/accounts/{account_id}/movements",
+            "/accounts/{account_id}/balance",
             "/accounts",
             "/accounts/by-number/{account_number}",
             "/accounts/{account_id}",
@@ -72,4 +80,11 @@ def test_memory_session_dependency_yields_none() -> None:
 def test_import_integrity_and_registered_metadata() -> None:
     for package in ("domain", "application", "ports", "api", "infrastructure"):
         assert importlib.import_module(package).__file__ is not None
-    assert set(Base.metadata.tables) == {"banking.accounts"}
+    assert set(Base.metadata.tables) == {
+        "banking.accounts",
+        "banking.transactions",
+        "banking.account_movements",
+        "banking.account_balances",
+        "banking.account_balance_openings",
+        "banking.transaction_requests",
+    }

@@ -9,6 +9,13 @@ See [Accounts repository](docs/accounts-repository.md) for Phase 3.
 See [Accounts application](docs/accounts-application.md) for Phase 4.
 See [Accounts REST API](docs/accounts-api.md) for Phase 5.
 See [CBS frontend](frontend/README.md) for the independent Accounts interface.
+See [Transactions domain](docs/transactions-domain.md) for the domain-only first
+phase of Transactions. The MVP uses a transactional AccountBalance projection
+rather than a double-entry ledger.
+See [Transactions persistence](docs/transactions-persistence.md) for the separate
+Phase 2 ORM, mappers and incremental migration.
+See [Account balances](docs/account-balances.md) for Phase 4's internal balance
+coordination, atomic zero initialization and controlled historical opening policy.
 
 ## Requirements and stack
 
@@ -113,6 +120,8 @@ src/
     __init__.py
     account/                     # Pure Accounts domain
       __init__.py, entities.py, enums.py, exceptions.py
+    transaction/                 # Pure transactions and account movements
+      __init__.py, entities.py, enums.py, exceptions.py
   application/
     __init__.py, account_messages.py, account_numbers.py
     use_cases/                   # Six Account application operations
@@ -216,10 +225,15 @@ mapper, an Accounts Alembic migration, AccountRepository port and SQLAlchemy
 adapter, six Account use cases, an explicit application transaction boundary,
 six Accounts REST endpoints, development checks, and infrastructure/API tests.
 
-Planned only: customer integration, account ownership, current accounts,
-balances, deposits, withdrawals, internal transfers, movements, double-entry
-ledger, and transaction history. No Customer, Transaction, Ledger, or
-Balance business models, repositories, use cases, endpoints, or tables exist.
+Transactions adds immutable BankingTransaction and AccountMovement domain
+entities, ORM models, bidirectional mappers and an incremental migration for
+banking.transactions and banking.account_movements. AccountBalance and explicit
+opening metadata now support internal transaction-safe balance coordination.
+New Account creation initializes its zero balance atomically. Public posting,
+deposits, withdrawals, internal transfers and transaction history remain deferred.
+The MVP coordinates projections with PostgreSQL ACID transactions and will not implement a
+double-entry ledger. Customer integration, account ownership and additional
+products remain future work; there is no Customer model.
 The Accounts domain provides an immutable Account entity, ACTIVE/BLOCKED state
 transitions, and historical reconstruction including CLOSED accounts. Account
 closure remains deferred. The Account repository uses an injected
@@ -233,3 +247,10 @@ Ports and infrastructure boundaries allow a future explicit integration.
 Data preparation, cleaning, normalization, and Berka-specific mapping happen
 outside this repository. There are no datasets, ingestion adapters, ETL, seeds,
 or data-processing dependencies.
+
+Transactions application operations (Phase 5): see [atomic posting and durable idempotency](docs/transaction-use-cases.md). The [Transactions REST API](docs/transactions-api.md) exposes these operations in Phase 6.
+
+CBS frontend Transactions management (Phase 2): see [frontend operations and idempotency](frontend/README.md#transactions).
+
+Customer Banking local DEMO (frontend Phase 3) is available at `/banking` alongside
+the existing administrative console. See [customer experience and contract limits](frontend/README.md#customer-banking--phase-3-local-demo).
