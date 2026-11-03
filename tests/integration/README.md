@@ -80,3 +80,5 @@ required locks, posted signed-movement consistency, missing opening metadata,
 and a migration with no guessed backfill or changes to existing Accounts.
 
 Phase 5 `test_transaction_use_cases.py` covers monetary posting, durable request receipts, rollback at each write stage, real PostgreSQL lock waits for duplicate requests, overspending, opposite transfers and blocking races, plus pagination and reconciliation.
+
+Phase 6 `test_transactions_api.py` covers all seven HTTP endpoints against isolated PostgreSQL, idempotent retries and concurrent requests, filtered pagination/counts, inactive accounts, failures and session cleanup.
