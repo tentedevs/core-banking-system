@@ -44,7 +44,11 @@ beforeEach(() => {
     if (path.startsWith("/api/transactions/")) return json(tx);
     return json({ detail:"not found" },404);
   });
-  vi.stubGlobal("fetch",fetchMock);
+  vi.stubGlobal("fetch",(input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input) === "/auth/me") return Promise.resolve(json({id:"00000000-0000-4000-8000-000000000099",email:"admin@example.test",applications:[{application_code:"CBS",actor_type:"ADMIN"}]}));
+    if (String(input) === "/api/me") return Promise.resolve(json({actor_id:"00000000-0000-4000-8000-000000000099",application_code:"CBS",actor_type:"ADMIN",customer_id:null,link_status:"NOT_APPLICABLE"}));
+    return fetchMock(input, init);
+  });
 });
 afterEach(() => { clients.forEach(client => client.clear()); clients.length = 0; vi.unstubAllGlobals(); });
 function show(path = "/transactions", client = new QueryClient({ defaultOptions: { queries: { retry:false }, mutations: { retry:false } } })) {
@@ -79,7 +83,7 @@ it("lista datos reales y aplica filtros, paginación y actualización en el serv
 });
 it("muestra carga, vacío y error sin inventar transacciones", async () => {
   fetchMock.mockReturnValue(new Promise(() => {})); const view = show();
-  expect(screen.getByText("Cargando transacciones…")).toBeTruthy(); view.unmount();
+  expect(await screen.findByText("Cargando transacciones…")).toBeTruthy(); view.unmount();
   fetchMock.mockResolvedValue(json(page([]))); const empty = show();
   expect(await screen.findByText("No hay transacciones en esta página.")).toBeTruthy(); empty.unmount();
   fetchMock.mockResolvedValue(json({ detail:"private SQL" },500)); show();
@@ -128,14 +132,14 @@ it("preserva la precisión en los límites monetarios", () => {
 });
 it("exige una cuenta seleccionada y no permite cuentas bloqueadas", async () => {
   show("/transactions/new/deposit"); const user = userEvent.setup();
-  await user.type(screen.getByLabelText("Importe"),"1"); await user.click(screen.getByRole("button",{name:"Revisar operación"}));
+  await user.type(await screen.findByLabelText("Importe"),"1"); await user.click(screen.getByRole("button",{name:"Revisar operación"}));
   expect(posts()).toHaveLength(0);
   expect((screen.getByRole("option",{name:/CBS-BLOCKED/}) as HTMLOptionElement).disabled).toBe(true);
 });
 it("rechaza transferencias a la misma cuenta", async () => {
   show(`/transactions/new/transfer?account=${a.id}`); const user = userEvent.setup();
   await screen.findByDisplayValue("CZK"); await user.selectOptions(screen.getByLabelText("Cuenta destino"),a.id);
-  await user.type(screen.getByLabelText("Importe"),"1"); await user.click(screen.getByRole("button",{name:"Revisar operación"}));
+  await user.type(await screen.findByLabelText("Importe"),"1"); await user.click(screen.getByRole("button",{name:"Revisar operación"}));
   expect((await screen.findByRole("alert")).textContent).toContain("distintas");
   expect(posts()).toHaveLength(0);
   expect((within(screen.getByLabelText("Cuenta destino")).getByRole("option",{name:/CBS-EUR/}) as HTMLOptionElement).disabled).toBe(true);
@@ -189,6 +193,7 @@ it.each([500,503])("un HTTP %s no cambia la clave ni permite sustituir una petic
 });
 it("invalida balances, movimientos e historial después del éxito y muestra el balance del servidor", async () => {
   const user = await review();
+  const invalidate = vi.spyOn(QueryClient.prototype,"invalidateQueries");
   const client = clients.at(-1)!;
   client.setQueryData(["accounts","balance",a.id],{account_id:a.id,booked_balance:"500.00",available_balance:"500.00",updated_at:a.created_at});
   client.setQueryData(["accounts","movements",a.id,20,0],page([movement]));
@@ -196,9 +201,9 @@ it("invalida balances, movimientos e historial después del éxito y muestra el 
   onPost = (url,init) => {booked = "550.00";return json(posted(url,init),201);};
   await user.click(screen.getByRole("button",{name:"Confirmar depósito"}));
   await screen.findByText("Operación registrada correctamente.");
-  expect(client.getQueryState(["accounts","balance",a.id])?.isInvalidated).toBe(true);
-  expect(client.getQueryState(["accounts","movements",a.id,20,0])?.isInvalidated).toBe(true);
-  expect(client.getQueryState(["transactions","list","","",20,0])?.isInvalidated).toBe(true);
+  expect(invalidate.mock.calls.some(([options]) => JSON.stringify(options?.queryKey) === JSON.stringify(["accounts","balance",a.id]))).toBe(true);
+  expect(invalidate.mock.calls.some(([options]) => JSON.stringify(options?.queryKey) === JSON.stringify(["accounts","movements",a.id]))).toBe(true);
+  expect(invalidate.mock.calls.some(([options]) => JSON.stringify(options?.queryKey) === JSON.stringify(["transactions"]))).toBe(true);
   await user.click(await screen.findByRole("link",{name:a.id}));
   expect(await screen.findAllByText("550.00 CZK")).toHaveLength(2);
 });
@@ -231,7 +236,7 @@ it("bloquea otra operación mientras existe una petición incierta", async () =>
   await screen.findByRole("button",{name:"Reintentar misma petición"});
   const {cleanup} = await import("@testing-library/react"); cleanup();
   show("/transactions/new/transfer");
-  expect(screen.getByRole("link",{name:"Recuperar depósito"})).toBeTruthy();
+  expect(await screen.findByRole("link",{name:"Recuperar depósito"})).toBeTruthy();
   expect(screen.queryByLabelText("Importe")).toBeNull(); expect(posts()).toHaveLength(1);
 });
 it("no envía dinero si no puede guardar la clave idempotente", async () => {

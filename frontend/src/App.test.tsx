@@ -17,6 +17,8 @@ const fetchMock = vi.fn<typeof fetch>();
 const clients: QueryClient[] = [];
 beforeEach(() => { fetchMock.mockReset(); vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
   const path = String(input);
+  if (path === "/auth/me") return Promise.resolve(json({id:"00000000-0000-4000-8000-000000000099",email:"admin@example.test",applications:[{application_code:"CBS",actor_type:"ADMIN"}]}));
+  if (path === "/api/me") return Promise.resolve(json({actor_id:"00000000-0000-4000-8000-000000000099",application_code:"CBS",actor_type:"ADMIN",customer_id:null,link_status:"NOT_APPLICABLE"}));
   if (path.includes("/movements?")) return Promise.resolve(json(page([])));
   if (path.endsWith("/balance")) return Promise.resolve(json({ account_id: account.id, booked_balance: "0.00", available_balance: "0.00", updated_at: account.updated_at }));
   return fetchMock(input, init);
@@ -69,7 +71,7 @@ describe("Frontend independiente de CBS", () => {
   it("crea una cuenta con solo customer_id y currency y abre su detalle", async () => {
     fetchMock.mockImplementation((_url, options) => Promise.resolve(json(account, options?.method === "POST" ? 201 : 200)));
     show("/accounts/new"); const user = userEvent.setup();
-    await user.type(screen.getByLabelText("UUID del cliente"), account.customer_id);
+    await user.type(await screen.findByLabelText("UUID del cliente"), account.customer_id);
     await user.click(screen.getByRole("button", { name: "Crear cuenta" }));
     await screen.findByRole("heading", { name: account.account_number });
     const post = fetchMock.mock.calls.find(([, options]) => options?.method === "POST");
@@ -81,7 +83,7 @@ describe("Frontend independiente de CBS", () => {
     let complete!: (response: Response) => void;
     fetchMock.mockReturnValue(new Promise((resolve) => { complete = resolve; }));
     show("/accounts/new"); const user = userEvent.setup();
-    await user.type(screen.getByLabelText("UUID del cliente"), account.customer_id);
+    await user.type(await screen.findByLabelText("UUID del cliente"), account.customer_id);
     await user.click(screen.getByRole("button", { name: "Crear cuenta" }));
     const button = await screen.findByRole("button", { name: "Creando…" });
     expect((button as HTMLButtonElement).disabled).toBe(true);
