@@ -52,3 +52,23 @@ class TransactionRepository(Protocol):
         transaction_type: TransactionType | None = None,
         status: TransactionStatus | None = None,
     ) -> int: ...
+
+    def list_by_customer(
+        self,
+        customer_id: UUID,
+        limit: int = 50,
+        offset: int = 0,
+        *,
+        transaction_type: TransactionType | None = None,
+        status: TransactionStatus | None = None,
+    ) -> list[BankingTransaction]: ...
+
+    def count_by_customer(
+        self,
+        customer_id: UUID,
+        *,
+        transaction_type: TransactionType | None = None,
+        status: TransactionStatus | None = None,
+    ) -> int: ...
+
+    def has_customer_movement(self, transaction_id: UUID, customer_id: UUID) -> bool: ...

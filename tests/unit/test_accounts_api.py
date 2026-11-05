@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from sqlalchemy.exc import OperationalError
 
 from api import dependencies
+from api.authentication import require_banking_admin
 from api.main import create_app
 from api.schemas.account import AccountResponse
 from application.account_messages import (
@@ -40,6 +41,7 @@ def work():
 @pytest.fixture
 def app(work):
     app = create_app(Settings(_env_file=None))
+    app.dependency_overrides[require_banking_admin] = lambda: None
     app.dependency_overrides[dependencies.get_account_unit_of_work] = lambda: work
     return app
 
@@ -233,7 +235,9 @@ def test_known_and_unexpected_failures_are_redacted(client, work, error, code, d
 
 
 def test_disabled_backend_returns_503_and_health_remains_live():
-    with TestClient(create_app(Settings(_env_file=None))) as client:
+    app = create_app(Settings(_env_file=None))
+    app.dependency_overrides[require_banking_admin] = lambda: None
+    with TestClient(app) as client:
         assert client.get("/accounts").status_code == 503
         assert client.get("/health").json() == {"status": "ok"}
 

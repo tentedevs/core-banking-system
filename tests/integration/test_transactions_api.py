@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import event, text
 from sqlalchemy.orm import Session
 
+from api.authentication import require_banking_admin
 from api.main import create_app
 from application.account_balance_service import AccountBalanceService
 from infrastructure.persistence.account_unit_of_work import SQLAlchemyAccountUnitOfWork
@@ -25,13 +26,16 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture
 def app(migrated_engine, isolated_database_settings):
-    return create_app(
+    app = create_app(
         Settings(
             persistence_backend="postgres",
             database_url=isolated_database_settings.database_url,
             _env_file=None,
         )
     )
+
+    app.dependency_overrides[require_banking_admin] = lambda: None
+    return app
 
 
 @pytest.fixture

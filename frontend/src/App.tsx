@@ -1,10 +1,12 @@
 import { CreditRiskLink } from "./components/CreditRiskLink";
-import { DemoCustomerProvider } from "./features/customer-banking/context";
+import { AuthProvider, SessionControls, useAuth } from "./auth/AuthProvider";
+import { navigateToLogin } from "./auth/navigation";
+import { Onboarding } from "./features/customer-banking/Onboarding";
 import { CustomerBanking } from "./features/customer-banking/CustomerBanking";
 import { AccountBalance, Movements } from "./components/Banking";
 import { TransactionsPage, TransactionDetail, OperationLinks } from "./pages/Transactions";
 import { MonetaryOperationRoute } from "./pages/MonetaryOperation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, NavLink, Navigate, Route, Routes, useNavigate, useParams, useLocation } from "react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -18,9 +20,26 @@ function ErrorNotice({ error }: { error: unknown }) { return <p role="alert" cla
 function Loading() { return <p role="status" className="loading">Cargando cuentas…</p>; }
 function date(value: string) { return new Intl.DateTimeFormat("es", { dateStyle: "medium", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`)); }
 
-export function App() {
-  return <DemoCustomerProvider><Routes><Route path="/banking/*" element={<CustomerBanking />} /><Route path="/admin/*" element={<AdminRedirect />} /><Route path="/*" element={<Administration />} /></Routes></DemoCustomerProvider>;
+export function App() { return <AuthProvider><AuthenticatedApp /></AuthProvider>; }
+function LoginRequired() {
+  useEffect(() => { navigateToLogin(); }, []);
+  return <section className="panel"><h1>Inicia sesión</h1><a href="/login">Ir al login</a></section>;
 }
+function AuthenticatedApp() {
+  const auth = useAuth(); const location = useLocation();
+  if (auth.status === "loading") return <p role="status" className="loading">Comprobando sesión…</p>;
+  if (auth.status === "unauthenticated") return <LoginRequired />;
+  if (auth.status === "denied") return <section className="panel"><h1>Acceso denegado</h1><p>{auth.error}</p><SessionControls /></section>;
+  if (auth.status === "error") return <section className="panel"><h1>Servicio no disponible</h1><p role="alert">{auth.error}</p><button className="button secondary" onClick={() => void auth.restore()}>Reintentar conexión</button></section>;
+  if (auth.identity?.actor_type === "CUSTOMER") {
+    if (!location.pathname.startsWith("/me")) return <Navigate to="/me" replace />;
+    if (auth.identity.link_status !== "LINKED") return <Onboarding />;
+    return <Routes><Route path="/me/*" element={<CustomerBanking />} /></Routes>;
+  }
+  if (location.pathname.startsWith("/me") || location.pathname === "/account" || location.pathname.startsWith("/banking")) return <Navigate to="/accounts" replace />;
+  return <Routes><Route path="/admin/*" element={<AdminRedirect />} /><Route path="/*" element={<Administration />} /></Routes>;
+}
+
 function AdminRedirect() {
   const location = useLocation();
   return <Navigate replace to={`${location.pathname.replace(/^\/admin/, "") || "/accounts"}${location.search}${location.hash}`} />;
@@ -32,7 +51,7 @@ function Administration() {
       <Link to="/accounts" className="brand"><span className="brand-icon">C</span><span>CBS<small>CORE BANKING SYSTEM</small></span></Link>
       <p className="nav-label">ESPACIO DE TRABAJO</p>
       <nav aria-label="Navegación principal"><NavLink to="/accounts">▤ <span>Cuentas</span><span aria-hidden="true">↗</span></NavLink><NavLink to="/transactions">⇄ <span>Transacciones</span><span aria-hidden="true">↗</span></NavLink><CreditRiskLink /></nav>
-      <Link className="experience-switch" to="/banking">Banca cliente · DEMO →</Link><div className="sidebar-footer"><span>Core Banking</span><small>Administración bancaria</small></div>
+      <SessionControls /><div className="sidebar-footer"><span>Core Banking</span><small>Administración bancaria</small></div>
     </aside>
     <div className="workspace"><header className="topbar"><span>Operaciones <span className="separator">/</span> {location.pathname.startsWith("/transactions") ? "Transacciones" : "Cuentas"}</span><span className="workspace-tag">CBS · Entorno local</span></header>
       <main><Routes>

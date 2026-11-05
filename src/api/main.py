@@ -4,13 +4,22 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from auth_client import AuthServiceClient
+from auth_client.fastapi_dependencies import build_current_actor_dependency
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
+from api.authentication import require_banking_admin
 from api.routers.accounts import router as accounts_router
+from api.routers.customer_onboarding import router as customer_onboarding_router
+from api.routers.customer_reads import router as customer_reads_router
+from api.routers.customer_transfers import router as customer_transfers_router
+from api.routers.internal_registration import router as internal_registration_router
+from api.routers.me import router as me_router
 from api.routers.transactions import router as transactions_router
+from application.account_access_policy import CustomerAccessDenied
 from application.transaction_posting import AccountNotActive
 from application.use_cases.get_account import AccountNotFound
 from application.use_cases.get_transaction import TransactionNotFound
@@ -25,8 +34,20 @@ from ports.transaction_repository import IdempotencyConflict
 logger = logging.getLogger("uvicorn.error")
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, *, internal: bool = False) -> FastAPI:
     settings = settings if settings is not None else Settings()
+    auth_client = (
+        AuthServiceClient(
+            base_url=settings.auth_service_internal_url,
+            service_id=settings.auth_service_id,
+            service_credential=settings.auth_service_credential.get_secret_value(),
+            application_code=settings.auth_application_code,
+            timeout=settings.auth_request_timeout,
+            allow_insecure_http=settings.auth_allow_insecure_http,
+        )
+        if settings.auth_service_internal_url and settings.auth_service_credential
+        else None
+    )
     engine: Engine | None = None
     if settings.persistence_backend == "postgres":
         engine = create_database_engine(settings)
@@ -36,14 +57,49 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             yield
         finally:
-            if engine is not None:
-                engine.dispose()
+            try:
+                if auth_client is not None:
+                    auth_client.close()
+            finally:
+                if engine is not None:
+                    engine.dispose()
 
-    app = FastAPI(title="Core Banking System", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(
+        title="Core Banking System",
+        version="0.1.0",
+        lifespan=lifespan,
+        docs_url=None if internal else "/docs",
+        redoc_url=None if internal else "/redoc",
+        openapi_url=None if internal else "/openapi.json",
+    )
     app.state.settings = settings
+    app.state.auth_client = auth_client
+    app.state.current_actor_dependency = (
+        build_current_actor_dependency(
+            client=auth_client, cookie_name=settings.auth_session_cookie_name
+        )
+        if auth_client is not None
+        else None
+    )
+    if settings.auth_debug_endpoint_enabled:
+        from api.routers.auth_diagnostics import router as auth_diagnostics_router
+
+        app.include_router(auth_diagnostics_router)
     app.state.session_factory = create_session_factory(engine) if engine is not None else None
-    app.include_router(accounts_router)
-    app.include_router(transactions_router)
+    if internal:
+        if settings.registration_service_credential:
+            app.include_router(internal_registration_router)
+    else:
+        app.include_router(me_router)
+        app.include_router(customer_reads_router)
+        app.include_router(customer_transfers_router)
+        app.include_router(customer_onboarding_router)
+        app.include_router(accounts_router, dependencies=[Depends(require_banking_admin)])
+        app.include_router(transactions_router, dependencies=[Depends(require_banking_admin)])
+
+    @app.exception_handler(CustomerAccessDenied)
+    async def customer_access_denied(request: Request, exc: CustomerAccessDenied) -> JSONResponse:
+        return JSONResponse(status_code=403, content={"detail": str(exc)})
 
     @app.exception_handler(TransactionNotFound)
     async def transaction_not_found(request: Request, exc: TransactionNotFound) -> JSONResponse:

@@ -21,6 +21,15 @@ def test_application_creation_and_health() -> None:
         paths = client.get("/openapi.json").json()["paths"]
         assert set(paths) == {
             "/health",
+            "/me",
+            "/me/accounts",
+            "/me/accounts/{account_id}",
+            "/me/accounts/{account_id}/balance",
+            "/me/accounts/{account_id}/movements",
+            "/me/transactions",
+            "/me/transfers",
+            "/me/onboarding",
+            "/me/transactions/{transaction_id}",
             "/transactions",
             "/transactions/{transaction_id}",
             "/transactions/{transaction_id}/movements",
@@ -87,4 +96,6 @@ def test_import_integrity_and_registered_metadata() -> None:
         "banking.account_balances",
         "banking.account_balance_openings",
         "banking.transaction_requests",
+        "banking.actor_customer_links",
+        "banking.customer_onboardings",
     }

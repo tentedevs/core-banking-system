@@ -13,7 +13,7 @@ export interface Transaction {
 export interface Movement {
   id: string; transaction_id: string; account_id: string; direction: "CREDIT" | "DEBIT";
   amount: string; balance_after: string | null; booked_at: string;
-  category: string | null; counterparty_account: string | null; counterparty_bank: string | null;
+  category?: string | null; counterparty_account?: string | null; counterparty_bank?: string | null;
 }
 export interface Balance { account_id: string; booked_balance: string; available_balance: string; updated_at: string }
 export interface Page<T> { items: T[]; pagination: AccountPage["pagination"] }

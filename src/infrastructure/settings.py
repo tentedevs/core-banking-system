@@ -1,6 +1,6 @@
 from typing import Literal, Self
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.exc import ArgumentError
@@ -8,6 +8,42 @@ from sqlalchemy.exc import ArgumentError
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
+
+    banking_trusted_origins: list[str] = []
+    registration_service_credential: SecretStr | None = None
+    crp_customer_provisioning_credential: SecretStr | None = None
+    crp_customer_service_url: str | None = None
+    crp_customer_allow_insecure_http: bool = False
+    crp_customer_request_timeout: float = Field(default=2.0, gt=0, le=10, allow_inf_nan=False)
+
+    app_env: Literal["development", "test", "production"] = "production"
+    auth_service_internal_url: str | None = None
+    auth_service_credential: SecretStr | None = None
+    auth_service_id: str = "cbs-backend"
+    auth_application_code: Literal["CBS"] = "CBS"
+    auth_session_cookie_name: str = "auth_session"
+    auth_request_timeout: float = Field(default=2.0, gt=0, le=10, allow_inf_nan=False)
+    auth_allow_insecure_http: bool = False
+    auth_debug_endpoint_enabled: bool = False
+
+    @field_validator("crp_customer_provisioning_credential", "registration_service_credential")
+    @classmethod
+    def valid_customer_provisioning_key(cls, value: SecretStr | None) -> SecretStr | None:
+        import re
+
+        if value is not None and re.fullmatch(r"[0-9a-f]{64}", value.get_secret_value()) is None:
+            raise ValueError("Customer provisioning key must be 64 lowercase hex characters")
+        return value
+
+    @model_validator(mode="after")
+    def validate_auth_configuration(self) -> Self:
+        if bool(self.auth_service_internal_url) != bool(self.auth_service_credential):
+            raise ValueError("Auth service URL and credential must be configured together")
+        if self.auth_debug_endpoint_enabled and self.app_env not in {"development", "test"}:
+            raise ValueError("Auth diagnostics require an explicit development or test environment")
+        if self.auth_debug_endpoint_enabled and not self.auth_service_internal_url:
+            raise ValueError("Auth diagnostics require auth service configuration")
+        return self
 
     database_mode: Literal["memory", "postgres"] = "memory"
     persistence_backend: Literal["memory", "postgres"] = "memory"
