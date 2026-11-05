@@ -266,3 +266,35 @@ class BalanceOpeningORM(Base):
         )
     )
     initialized_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ActorCustomerLinkORM(Base):
+    __tablename__ = "actor_customer_links"
+    __table_args__ = (
+        PrimaryKeyConstraint("actor_id", name="pk_actor_customer_links"),
+        Index("ix_actor_customer_links_customer_id", "customer_id"),
+        {"schema": "banking"},
+    )
+    actor_id: Mapped[UUID] = mapped_column()
+    customer_id: Mapped[UUID] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class CustomerOnboardingORM(Base):
+    __tablename__ = "customer_onboardings"
+    __table_args__ = (
+        PrimaryKeyConstraint("actor_id", name="pk_customer_onboardings"),
+        UniqueConstraint("customer_id", name="uq_customer_onboardings_customer_id"),
+        UniqueConstraint("account_id", name="uq_customer_onboardings_account_id"),
+        CheckConstraint(
+            "fingerprint COLLATE \"C\" ~ '^[0-9a-f]{64}$'",
+            name="ck_customer_onboardings_fingerprint",
+        ),
+        {"schema": "banking"},
+    )
+    actor_id: Mapped[UUID] = mapped_column()
+    customer_id: Mapped[UUID] = mapped_column()
+    fingerprint: Mapped[str] = mapped_column(CHAR(64))
+    account_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("banking.accounts.id", name="fk_customer_onboardings_account"), nullable=True
+    )

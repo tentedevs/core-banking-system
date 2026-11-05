@@ -1,5 +1,6 @@
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 
@@ -52,7 +53,11 @@ def request_fingerprint(command: MonetaryCommand) -> str:
     ).hexdigest()
 
 
-def post_operation(unit_of_work: AccountUnitOfWork, command: MonetaryCommand) -> BankingTransaction:
+def post_operation(
+    unit_of_work: AccountUnitOfWork,
+    command: MonetaryCommand,
+    authorize: Callable[[AccountUnitOfWork], None] | None = None,
+) -> BankingTransaction:
     """Coordinate posting exclusively inside a caller-owned, atomic Unit of Work.
 
     Lock order: idempotency key, then all participating accounts/balances in UUID
@@ -62,6 +67,10 @@ def post_operation(unit_of_work: AccountUnitOfWork, command: MonetaryCommand) ->
     with unit_of_work as work:
         transactions = work.transactions
         transactions.lock_idempotency_key(command.idempotency_key)
+        # Customer authorization runs inside this transaction, before any receipt
+        # can disclose an earlier result. Financial posting remains unchanged.
+        if authorize is not None:
+            authorize(work)
         receipt = transactions.get_request(command.idempotency_key)
         if receipt is not None:
             if receipt.fingerprint != fingerprint:

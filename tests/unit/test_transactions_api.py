@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
 
 from api import dependencies
+from api.authentication import require_banking_admin
 from api.main import create_app
 from application.transaction_messages import CreateDepositCommand
 from application.use_cases.create_deposit import CreateDeposit
@@ -24,6 +25,7 @@ def work():
 @pytest.fixture
 def app(work):
     app = create_app(Settings(_env_file=None))
+    app.dependency_overrides[require_banking_admin] = lambda: None
     app.dependency_overrides[dependencies.get_account_unit_of_work] = lambda: work
     return app
 
@@ -259,7 +261,9 @@ def test_openapi_documents_seven_endpoints_and_string_money(client):
 
 
 def test_memory_backend_is_unavailable_without_false_success():
-    with TestClient(create_app(Settings(_env_file=None))) as client:
+    app = create_app(Settings(_env_file=None))
+    app.dependency_overrides[require_banking_admin] = lambda: None
+    with TestClient(app) as client:
         assert client.get("/transactions").status_code == 503
         assert client.get("/health").status_code == 200
 

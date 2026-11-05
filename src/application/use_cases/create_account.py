@@ -20,16 +20,31 @@ class CreateAccount:
         )
 
     def execute(self, command: CreateAccountCommand) -> Account:
-        account = Account.create(
+        account = self._build(command)
+        with self.unit_of_work as work:
+            self._persist(work, account)
+            work.commit()
+            return account
+
+    def _build(self, command: CreateAccountCommand) -> Account:
+        return Account.create(
             customer_id=command.customer_id,
             currency=command.currency,
             account_number=self.number_generator.generate(),
             opened_at=datetime.now(UTC).date(),
         )
-        with self.unit_of_work as work:
-            work.accounts.save(account)
-            AccountBalanceService(work.accounts, work.balances).initialize(
-                account.id, currency=account.currency
-            )
-            work.commit()
+
+    @staticmethod
+    def _persist(work: AccountUnitOfWork, account: Account) -> None:
+        work.accounts.save(account)
+        AccountBalanceService(work.accounts, work.balances).initialize(
+            account.id, currency=account.currency
+        )
+
+    def create_in_transaction(
+        self, work: AccountUnitOfWork, command: CreateAccountCommand
+    ) -> Account:
+        """Reuse account creation inside a larger caller-owned CBS transaction."""
+        account = self._build(command)
+        self._persist(work, account)
         return account

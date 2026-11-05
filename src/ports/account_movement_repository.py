@@ -16,7 +16,14 @@ class AccountMovementRepository(Protocol):
     def count_by_account(self, account_id: UUID) -> int: ...
 
     def list_by_transaction(
-        self, transaction_id: UUID, limit: int = 50, offset: int = 0
+        self,
+        transaction_id: UUID,
+        limit: int = 50,
+        offset: int = 0,
+        *,
+        customer_id: UUID | None = None,
     ) -> list[AccountMovement]: ...
 
-    def count_by_transaction(self, transaction_id: UUID) -> int: ...
+    def count_by_transaction(
+        self, transaction_id: UUID, *, customer_id: UUID | None = None
+    ) -> int: ...

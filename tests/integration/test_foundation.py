@@ -22,6 +22,8 @@ def test_migrations_are_repeatable(migrated_engine: Engine) -> None:
             "account_balances",
             "account_balance_openings",
             "transaction_requests",
+            "actor_customer_links",
+            "customer_onboardings",
         }
 
 

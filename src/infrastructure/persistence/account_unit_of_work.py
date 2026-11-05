@@ -9,7 +9,13 @@ from infrastructure.persistence.repositories.account_movement_repository import 
     SQLAlchemyAccountMovementRepository,
 )
 from infrastructure.persistence.repositories.account_repository import SQLAlchemyAccountRepository
+from infrastructure.persistence.repositories.actor_customer_link_repository import (
+    SQLAlchemyActorCustomerLinkRepository,
+)
 from infrastructure.persistence.repositories.balance_repository import SQLAlchemyBalanceRepository
+from infrastructure.persistence.repositories.customer_onboarding_repository import (
+    SQLAlchemyCustomerOnboardingRepository,
+)
 from infrastructure.persistence.repositories.transaction_repository import (
     SQLAlchemyTransactionRepository,
 )
@@ -23,10 +29,24 @@ class SQLAlchemyAccountUnitOfWork:
     def __init__(self, sessions: sessionmaker[Session]) -> None:
         self.sessions = sessions
         self._session: Session | None = None
+        self._onboardings: SQLAlchemyCustomerOnboardingRepository | None = None
+        self._links: SQLAlchemyActorCustomerLinkRepository | None = None
         self._accounts: SQLAlchemyAccountRepository | None = None
         self._balances: SQLAlchemyBalanceRepository | None = None
         self._transactions: SQLAlchemyTransactionRepository | None = None
         self._movements: SQLAlchemyAccountMovementRepository | None = None
+
+    @property
+    def onboardings(self) -> SQLAlchemyCustomerOnboardingRepository:
+        if self._onboardings is None:
+            raise RuntimeError("Unit of work must be entered before accessing onboarding")
+        return self._onboardings
+
+    @property
+    def links(self) -> SQLAlchemyActorCustomerLinkRepository:
+        if self._links is None:
+            raise RuntimeError("Unit of work must be entered before accessing links")
+        return self._links
 
     @property
     def transactions(self) -> SQLAlchemyTransactionRepository:
@@ -57,6 +77,8 @@ class SQLAlchemyAccountUnitOfWork:
             raise RuntimeError("Unit of work is already active")
         self._session = self.sessions()
         self._accounts = SQLAlchemyAccountRepository(self._session)
+        self._links = SQLAlchemyActorCustomerLinkRepository(self._session)
+        self._onboardings = SQLAlchemyCustomerOnboardingRepository(self._session)
         self._balances = SQLAlchemyBalanceRepository(self._session)
         self._transactions = SQLAlchemyTransactionRepository(self._session)
         self._movements = SQLAlchemyAccountMovementRepository(self._session)
@@ -84,6 +106,8 @@ class SQLAlchemyAccountUnitOfWork:
             finally:
                 self._session = None
                 self._accounts = None
+                self._links = None
+                self._onboardings = None
                 self._balances = None
                 self._transactions = None
                 self._movements = None

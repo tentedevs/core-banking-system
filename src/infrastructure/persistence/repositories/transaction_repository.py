@@ -3,11 +3,17 @@ from uuid import UUID
 
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import Select
 
 from domain.transaction.entities import BankingTransaction
 from domain.transaction.enums import TransactionStatus, TransactionType
 from infrastructure.persistence.mappers import transaction_mapper
-from infrastructure.persistence.models import TransactionORM, TransactionRequestORM
+from infrastructure.persistence.models import (
+    AccountMovementORM,
+    AccountORM,
+    TransactionORM,
+    TransactionRequestORM,
+)
 from infrastructure.persistence.repositories.account_repository import SQLAlchemyAccountRepository
 from ports.transaction_repository import IdempotencyRecord, TransactionPersistenceConflict
 
@@ -99,3 +105,64 @@ class SQLAlchemyTransactionRepository:
         if status is not None:
             query = query.where(TransactionORM.status == status)
         return self.session.scalar(query) or 0
+
+    @staticmethod
+    def _customer_transaction_ids(customer_id: UUID) -> Select[UUID]:
+        return (
+            select(AccountMovementORM.transaction_id)
+            .join(AccountORM, AccountORM.id == AccountMovementORM.account_id)
+            .where(AccountORM.customer_id == customer_id)
+        )
+
+    def list_by_customer(
+        self,
+        customer_id: UUID,
+        limit: int = 50,
+        offset: int = 0,
+        *,
+        transaction_type: TransactionType | None = None,
+        status: TransactionStatus | None = None,
+    ) -> list[BankingTransaction]:
+        SQLAlchemyAccountRepository._validate_pagination(limit, offset)
+        query = select(TransactionORM).where(
+            TransactionORM.id.in_(self._customer_transaction_ids(customer_id))
+        )
+        if transaction_type is not None:
+            query = query.where(TransactionORM.transaction_type == transaction_type)
+        if status is not None:
+            query = query.where(TransactionORM.status == status)
+        query = (
+            query.order_by(TransactionORM.created_at.desc(), TransactionORM.id)
+            .limit(limit)
+            .offset(offset)
+        )
+        return [transaction_mapper.to_domain(row) for row in self.session.scalars(query)]
+
+    def count_by_customer(
+        self,
+        customer_id: UUID,
+        *,
+        transaction_type: TransactionType | None = None,
+        status: TransactionStatus | None = None,
+    ) -> int:
+        query = (
+            select(func.count())
+            .select_from(TransactionORM)
+            .where(TransactionORM.id.in_(self._customer_transaction_ids(customer_id)))
+        )
+        if transaction_type is not None:
+            query = query.where(TransactionORM.transaction_type == transaction_type)
+        if status is not None:
+            query = query.where(TransactionORM.status == status)
+        return self.session.scalar(query) or 0
+
+    def has_customer_movement(self, transaction_id: UUID, customer_id: UUID) -> bool:
+        return (
+            self.session.scalar(
+                select(TransactionORM.id).where(
+                    TransactionORM.id == transaction_id,
+                    TransactionORM.id.in_(self._customer_transaction_ids(customer_id)),
+                )
+            )
+            is not None
+        )
