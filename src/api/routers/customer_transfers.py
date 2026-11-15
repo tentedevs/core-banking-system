@@ -4,13 +4,14 @@ from auth_client import CurrentActor
 from fastapi import APIRouter, Depends, Request, Response
 
 from api.authentication import get_current_actor, validate_banking_request_origin
-from api.dependencies import AccountWorkDependency
+from api.dependencies import AccountWorkDependency, get_customer_identity
 from api.routers.transactions import IdempotencyKey
 from api.schemas.customer_banking import CustomerTransactionResponse
 from api.schemas.transaction import TransferRequest
 from application.account_access_policy import AccountAccessPolicy
 from application.transaction_messages import CreateTransferCommand
 from application.use_cases.create_customer_transfer import CreateCustomerTransfer
+from ports.customer_identity import CustomerIdentityResolver
 
 router = APIRouter(prefix="/me", tags=["Customer banking"])
 
@@ -41,8 +42,9 @@ def transfer(
     idempotency_key: IdempotencyKey,
     work: AccountWorkDependency,
     response: Response,
+    identities: Annotated[CustomerIdentityResolver, Depends(get_customer_identity)],
 ) -> CustomerTransactionResponse:
-    transaction = CreateCustomerTransfer(work).execute(
+    transaction = CreateCustomerTransfer(work, identities).execute(
         actor, CreateTransferCommand(**payload.model_dump(), idempotency_key=idempotency_key)
     )
     response.headers["Cache-Control"] = "no-store"

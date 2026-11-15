@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from api.authentication import get_current_actor
 from api.dependencies import (
     SessionDependency,
+    get_customer_identity,
     get_get_account,
     get_get_account_balance,
     get_get_transaction,
@@ -42,12 +43,10 @@ from infrastructure.persistence.repositories.account_movement_repository import 
     SQLAlchemyAccountMovementRepository,
 )
 from infrastructure.persistence.repositories.account_repository import SQLAlchemyAccountRepository
-from infrastructure.persistence.repositories.actor_customer_link_repository import (
-    SQLAlchemyActorCustomerLinkRepository,
-)
 from infrastructure.persistence.repositories.transaction_repository import (
     SQLAlchemyTransactionRepository,
 )
+from ports.customer_identity import CustomerIdentityResolver
 
 router = APIRouter(prefix="/me", tags=["Customer banking"])
 
@@ -71,6 +70,7 @@ def get_customer_reads(
     actor: Annotated[CurrentActor, Depends(get_current_actor)],
     session: SessionDependency,
     response: Response,
+    identities: Annotated[CustomerIdentityResolver, Depends(get_customer_identity)],
 ) -> CustomerReadContext:
     AccountAccessPolicy.require_customer_actor(actor)
     if session is None:
@@ -78,7 +78,7 @@ def get_customer_reads(
     transactions = SQLAlchemyTransactionRepository(session)
     movements = SQLAlchemyAccountMovementRepository(session)
     policy = AccountAccessPolicy(
-        SQLAlchemyActorCustomerLinkRepository(session),
+        identities,
         SQLAlchemyAccountRepository(session),
         transactions,
     )

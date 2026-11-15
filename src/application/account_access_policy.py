@@ -5,7 +5,7 @@ from uuid import UUID
 
 from application.use_cases.get_account import AccountNotFound
 from ports.account_repository import AccountRepository
-from ports.actor_customer_link_repository import ActorCustomerLinkRepository
+from ports.customer_identity import CustomerIdentityResolver
 from ports.transaction_repository import TransactionRepository
 
 if TYPE_CHECKING:
@@ -17,15 +17,18 @@ class CustomerAccessDenied(Exception):
 
 
 class AccountAccessPolicy:
+    """Authorization for one operation; never cache this object across requests."""
+
     def __init__(
         self,
-        links: ActorCustomerLinkRepository,
+        links: CustomerIdentityResolver,
         accounts: AccountRepository,
         transactions: TransactionRepository,
     ) -> None:
         self.links = links
         self.accounts = accounts
         self.transactions = transactions
+        self._resolved: dict[UUID, UUID | None] = {}
 
     @staticmethod
     def require_customer_actor(actor: CurrentActor) -> None:
@@ -34,10 +37,12 @@ class AccountAccessPolicy:
 
     def require_customer_link(self, actor: CurrentActor) -> UUID:
         self.require_customer_actor(actor)
-        link = self.links.get_by_actor_id(actor.actor_id)
-        if link is None:
+        if actor.actor_id not in self._resolved:
+            self._resolved[actor.actor_id] = self.links.resolve_customer_id(actor.actor_id)
+        customer_id = self._resolved[actor.actor_id]
+        if customer_id is None:
             raise CustomerAccessDenied("Customer link required")
-        return link.customer_id
+        return customer_id
 
     def require_account_owner(self, actor: CurrentActor, account_id: UUID) -> None:
         customer = self.require_customer_link(actor)

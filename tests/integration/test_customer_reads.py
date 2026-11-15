@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
@@ -6,6 +7,7 @@ from auth_client import ActorType, CurrentActor
 from fastapi.testclient import TestClient
 
 from api.authentication import get_current_actor
+from api.dependencies import get_customer_identity
 from api.main import create_app
 from application.account_messages import CreateAccountCommand
 from application.transaction_messages import CreateDepositCommand, CreateTransferCommand
@@ -14,9 +16,6 @@ from application.use_cases.create_deposit import CreateDeposit
 from application.use_cases.create_transfer import CreateTransfer
 from infrastructure.persistence.account_unit_of_work import SQLAlchemyAccountUnitOfWork
 from infrastructure.persistence.database import create_session_factory
-from infrastructure.persistence.repositories.actor_customer_link_repository import (
-    SQLAlchemyActorCustomerLinkRepository,
-)
 from infrastructure.settings import Settings
 
 pytestmark = pytest.mark.integration
@@ -34,10 +33,6 @@ def customer_banking(migrated_engine, isolated_database_settings):
     a1 = CreateAccount(work()).execute(CreateAccountCommand(customer_a))
     a2 = CreateAccount(work()).execute(CreateAccountCommand(customer_a))
     b = CreateAccount(work()).execute(CreateAccountCommand(customer_b))
-    with sessions() as session, session.begin():
-        repo = SQLAlchemyActorCustomerLinkRepository(session)
-        repo.create_link(actor_a, customer_a)
-        repo.create_link(actor_b, customer_b)
     deposit_a = CreateDeposit(work()).execute(
         CreateDepositCommand(a1.id, Decimal("100"), "CZK", "secret-deposit-a")
     )
@@ -57,6 +52,12 @@ def customer_banking(migrated_engine, isolated_database_settings):
             _env_file=None,
         )
     )
+    identities = Mock()
+    identities.resolve_customer_id.side_effect = lambda actor_id: {
+        actor_a: customer_a,
+        actor_b: customer_b,
+    }.get(actor_id)
+    app.dependency_overrides[get_customer_identity] = lambda: identities
     state = {"actor": CurrentActor(actor_a, "CBS", ActorType.CUSTOMER)}
     app.dependency_overrides[get_current_actor] = lambda: state["actor"]
     with TestClient(app) as client:

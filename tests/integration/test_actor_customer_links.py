@@ -54,7 +54,11 @@ def test_duplicate_mapping_cannot_reassign_and_failed_transaction_rolls_back(mig
         assert repo.get_by_actor_id(another) is None
 
 
-def test_me_link_pending_removal_and_customer_denied(migrated_engine, isolated_database_settings):
+def test_local_legacy_links_do_not_authorize_requests(migrated_engine, isolated_database_settings):
+    from unittest.mock import Mock
+
+    from api.dependencies import get_customer_identity
+
     actor, customer = uuid4(), uuid4()
     app = create_app(
         Settings(
@@ -66,17 +70,18 @@ def test_me_link_pending_removal_and_customer_denied(migrated_engine, isolated_d
     app.dependency_overrides[get_current_actor] = lambda: CurrentActor(
         actor, "CBS", ActorType.CUSTOMER
     )
+    identities = Mock()
+    identities.resolve_customer_id.return_value = None
+    app.dependency_overrides[get_customer_identity] = lambda: identities
     sessions = create_session_factory(migrated_engine)
+    with sessions() as db, db.begin():
+        SQLAlchemyActorCustomerLinkRepository(db).create_link(actor, customer)
     with TestClient(app) as client:
         assert client.get("/me").json()["link_status"] == "PENDING_LINK"
-        with sessions() as db, db.begin():
-            SQLAlchemyActorCustomerLinkRepository(db).create_link(actor, customer)
+        assert client.get("/me/accounts").status_code == 403
+        assert client.get("/accounts").status_code == 403
+        identities.resolve_customer_id.return_value = customer
         assert client.get("/me").json()["customer_id"] == str(customer)
-        assert client.get("/accounts").status_code == 403
-        with sessions() as db, db.begin():
-            SQLAlchemyActorCustomerLinkRepository(db).remove_link(actor)
-        assert client.get("/me").json()["link_status"] == "PENDING_LINK"
-        assert client.get("/accounts").status_code == 403
 
 
 def test_link_migration_downgrade_and_upgrade(migrated_engine):
