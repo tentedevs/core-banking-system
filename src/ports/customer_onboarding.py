@@ -33,3 +33,13 @@ class CustomerOnboardingRepository(Protocol):
 
 class CustomerProvisioner(Protocol):
     def ensure(self, customer_id: UUID, profile: dict[str, object]) -> UUID: ...
+
+
+class CustomerOnboardingGateway(Protocol):
+    def onboard(
+        self,
+        actor_id: UUID,
+        profile: dict[str, object],
+        currency: str,
+        session_token: str | None = None,
+    ) -> UUID: ...
