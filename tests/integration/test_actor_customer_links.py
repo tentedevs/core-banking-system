@@ -95,46 +95,17 @@ def test_link_migration_downgrade_and_upgrade(migrated_engine):
         assert inspect(connection).has_table("actor_customer_links", schema="banking")
 
 
-def test_cli_link_show_remove_and_external_validation(
-    migrated_engine, isolated_database_settings, capsys
-):
-    import json
-    from unittest.mock import patch
+def test_cli_cannot_mutate_legacy_identity_tables(migrated_engine, capsys):
+    from sqlalchemy import func, select
 
     import link_customers
+    from infrastructure.persistence.models import ActorCustomerLinkORM
 
     actor, customer = uuid4(), uuid4()
-    settings = Settings(
-        persistence_backend="postgres",
-        database_url=isolated_database_settings.database_url,
-        crp_customer_service_url="https://crp.test",
-        _env_file=None,
+    assert (
+        link_customers.main(["link", "--actor-id", str(actor), "--customer-id", str(customer)]) == 1
     )
-    with (
-        patch("link_customers.Settings", return_value=settings),
-        patch("link_customers.verify_customer_actor"),
-        patch("link_customers.CRPCustomerDirectory") as directory,
-    ):
-        directory.return_value.__enter__.return_value.exists.return_value = False
-        assert (
-            link_customers.main(["link", "--actor-id", str(actor), "--customer-id", str(customer)])
-            == 1
-        )
-        assert "does not exist" in capsys.readouterr().err
-        directory.return_value.__enter__.return_value.exists.return_value = True
-        assert (
-            link_customers.main(["link", "--actor-id", str(actor), "--customer-id", str(customer)])
-            == 0
-        )
-        assert json.loads(capsys.readouterr().out)["customer_id"] == str(customer)
-        assert (
-            link_customers.main(["link", "--actor-id", str(actor), "--customer-id", str(uuid4())])
-            == 1
-        )
-        assert "already" in capsys.readouterr().err
-        assert link_customers.main(["show", "--actor-id", str(actor)]) == 0
-        assert json.loads(capsys.readouterr().out)["customer_id"] == str(customer)
-        assert link_customers.main(["remove", "--actor-id", str(actor)]) == 0
-        capsys.readouterr()
-        assert link_customers.main(["show", "--actor-id", str(actor)]) == 0
-        assert json.loads(capsys.readouterr().out)["customer_id"] is None
+    assert link_customers.main(["remove", "--actor-id", str(actor)]) == 1
+    with migrated_engine.connect() as connection:
+        assert connection.scalar(select(func.count()).select_from(ActorCustomerLinkORM)) == 0
+    assert "Customer Service" in capsys.readouterr().err
