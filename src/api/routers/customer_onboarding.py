@@ -6,11 +6,11 @@ from auth_client import CurrentActor
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from api.dependencies import AccountWorkDependency
+from api.dependencies import AccountWorkDependency, get_customer_service_client
 from api.routers.customer_transfers import transfer_actor
 from api.schemas.account import AccountResponse
 from application.use_cases.onboard_customer import OnboardCustomer
-from infrastructure.crp_customer_provisioner import CRPCustomerProvisioner
+from infrastructure.customer_service_client import CustomerServiceClient
 from ports.actor_customer_link_repository import ActorAlreadyLinked
 from ports.customer_onboarding import (
     CustomerProfileRejected,
@@ -65,8 +65,9 @@ def onboard(
     work: AccountWorkDependency,
     request: Request,
     response: Response,
+    customers: Annotated[CustomerServiceClient, Depends(get_customer_service_client)],
 ) -> AccountResponse:
-    return provision_account(payload, actor, work, request, response)
+    return provision_account(payload, actor, work, request, response, customers)
 
 
 def provision_account(
@@ -75,20 +76,22 @@ def provision_account(
     work: AccountWorkDependency,
     request: Request,
     response: Response,
+    customers: CustomerServiceClient,
+    *,
+    attested_registration: bool = False,
 ) -> AccountResponse:
     settings = request.app.state.settings
-    if not settings.crp_customer_service_url or not settings.crp_customer_provisioning_credential:
-        raise HTTPException(status_code=503, detail="El alta bancaria no está configurada.")
     try:
-        with CRPCustomerProvisioner(
-            settings.crp_customer_service_url,
-            settings.crp_customer_provisioning_credential.get_secret_value(),
-            allow_insecure_http=settings.crp_customer_allow_insecure_http,
-            timeout=settings.crp_customer_request_timeout,
-        ) as customers:
-            account = OnboardCustomer(work, customers).execute(
-                actor, payload.customer_profile(), payload.currency
-            )
+        token = (
+            None
+            if attested_registration
+            else request.cookies.get(settings.auth_session_cookie_name)
+        )
+        if not attested_registration and not token:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        account = OnboardCustomer(work, customers).execute(
+            actor, payload.customer_profile(), payload.currency, token
+        )
     except CustomerProfileRejected:
         raise HTTPException(
             status_code=422, detail="Revisa los datos del perfil bancario."

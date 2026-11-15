@@ -29,6 +29,14 @@ class Base(DeclarativeBase):
     pass
 
 
+class CustomerAccountOpeningORM(Base):
+    __tablename__ = "customer_account_openings"
+    __table_args__ = {"schema": "banking"}
+    customer_id: Mapped[UUID] = mapped_column(primary_key=True)
+    account_id: Mapped[UUID] = mapped_column(ForeignKey("banking.accounts.id"), unique=True)
+    currency: Mapped[str] = mapped_column(String(3))
+
+
 class TransactionRequestORM(Base):
     """Immutable idempotency receipt, committed with its financial operation."""
 

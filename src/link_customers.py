@@ -1,4 +1,4 @@
-"""Operator-only customer links; run on a host with CBS database credentials."""
+"""Deprecated identity CLI: show resolves via HTTP; mutations belong to Customer Service."""
 
 import argparse
 import getpass
@@ -10,19 +10,9 @@ from typing import Never
 from uuid import UUID
 
 from auth_client import ActorType, AuthServiceClient
-from auth_client.exceptions import AccessDenied, AuthenticationRequired, AuthServiceUnavailable
 from pydantic import ValidationError
-from sqlalchemy.exc import SQLAlchemyError
 
-from application.customer_identity import LinkActorToCustomer
-from infrastructure.crp_customer_directory import CRPCustomerDirectory
-from infrastructure.persistence.database import create_database_engine, create_session_factory
-from infrastructure.persistence.repositories.actor_customer_link_repository import (
-    SQLAlchemyActorCustomerLinkRepository,
-)
 from infrastructure.settings import Settings
-from ports.actor_customer_link_repository import ActorAlreadyLinked
-from ports.customer_directory import CustomerDirectoryUnavailable, CustomerNotFound
 
 
 class LinkingInputError(ValueError):
@@ -80,57 +70,40 @@ def verify_customer_actor(settings: Settings, actor_id: UUID, token_variable: st
 
 
 def main(argv: list[str] | None = None) -> int:
-    engine = None
+    """Deprecated mutation CLI: identity writes belong to Customer Service."""
+    from infrastructure.customer_service_client import CustomerServiceClient
+    from ports.customer_identity import CustomerIdentityUnavailable
+
     try:
         args = parser().parse_args(argv)
+        if args.operation != "show":
+            raise LinkingInputError(
+                "Identity mutations moved to Customer Service; use its audited administrative API."
+            )
         settings = Settings()
-        if settings.persistence_backend != "postgres":
-            raise LinkingInputError("Link management requires CBS PostgreSQL persistence")
-        if args.operation == "link":
-            verify_customer_actor(settings, args.actor_id, args.actor_session_env)
-            if not settings.crp_customer_service_url:
-                raise LinkingInputError("Configure CRP_CUSTOMER_SERVICE_URL before linking")
-        engine = create_database_engine(settings)
-        output: dict[str, object]
-        with create_session_factory(engine)() as session, session.begin():
-            links = SQLAlchemyActorCustomerLinkRepository(session)
-            if args.operation == "link":
-                with CRPCustomerDirectory(
-                    settings.crp_customer_service_url or "",
-                    allow_insecure_http=settings.crp_customer_allow_insecure_http,
-                    timeout=settings.crp_customer_request_timeout,
-                ) as customers:
-                    link = LinkActorToCustomer(links, customers).execute(
-                        args.actor_id, args.customer_id
-                    )
-                output = {"actor_id": str(link.actor_id), "customer_id": str(link.customer_id)}
-            elif args.operation == "show":
-                existing = links.get_by_actor_id(args.actor_id)
-                output = {
+        if not settings.customer_service_url or not settings.customer_service_credential:
+            raise LinkingInputError("Configure Customer Service before resolving identities")
+        with CustomerServiceClient(
+            settings.customer_service_url,
+            settings.customer_service_credential.get_secret_value(),
+            service_id=settings.customer_service_id,
+            allow_insecure_http=settings.customer_service_allow_insecure_http,
+            timeout=settings.customer_service_request_timeout,
+        ) as client:
+            customer_id = client.resolve_customer_id(args.actor_id)
+        print(
+            json.dumps(
+                {
                     "actor_id": str(args.actor_id),
-                    "customer_id": str(existing.customer_id) if existing else None,
+                    "customer_id": str(customer_id) if customer_id else None,
                 }
-            else:
-                links.remove_link(args.actor_id)
-                output = {"actor_id": str(args.actor_id), "removed": True}
-        print(json.dumps(output))
+            )
+        )
         return 0
-    except (
-        ValidationError,
-        SQLAlchemyError,
-        AuthenticationRequired,
-        AccessDenied,
-        AuthServiceUnavailable,
-        CustomerDirectoryUnavailable,
-    ):
-        print("Link operation failed; check service and database configuration.", file=sys.stderr)
-    except (LinkingInputError, CustomerNotFound, ActorAlreadyLinked) as error:
+    except (LinkingInputError, CustomerIdentityUnavailable) as error:
         print(str(error), file=sys.stderr)
-    except ValueError:
-        print("Invalid linking configuration.", file=sys.stderr)
-    finally:
-        if engine is not None:
-            engine.dispose()
+    except (ValidationError, ValueError):
+        print("Invalid Customer Service configuration.", file=sys.stderr)
     return 1
 
 

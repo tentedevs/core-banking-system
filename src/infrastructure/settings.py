@@ -10,6 +10,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
     banking_trusted_origins: list[str] = []
+    customer_service_url: str | None = None
+    customer_service_credential: SecretStr | None = None
+    customer_service_id: str = "cbs-backend"
+    customer_service_registration_credential: SecretStr | None = None
+    customer_service_registration_id: str = "cbs-registration-bridge"
+    customer_service_allow_insecure_http: bool = False
+    customer_service_request_timeout: float = Field(default=3, gt=0, le=30, allow_inf_nan=False)
     registration_service_credential: SecretStr | None = None
     crp_customer_provisioning_credential: SecretStr | None = None
     crp_customer_service_url: str | None = None
@@ -37,6 +44,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_auth_configuration(self) -> Self:
+        if bool(self.customer_service_url) != bool(self.customer_service_credential):
+            raise ValueError("Customer Service URL and credential must be configured together")
+        if self.customer_service_registration_credential and not self.customer_service_url:
+            raise ValueError("Registration bridge requires Customer Service configuration")
         if bool(self.auth_service_internal_url) != bool(self.auth_service_credential):
             raise ValueError("Auth service URL and credential must be configured together")
         if self.auth_debug_endpoint_enabled and self.app_env not in {"development", "test"}:

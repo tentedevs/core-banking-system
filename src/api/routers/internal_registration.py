@@ -9,8 +9,9 @@ from uuid import UUID
 from auth_client import ActorType, CurrentActor
 from fastapi import APIRouter, Depends, HTTPException, Request
 
-from api.dependencies import AccountWorkDependency
+from api.dependencies import AccountWorkDependency, get_registration_customer_client
 from api.routers.customer_onboarding import OnboardingRequest, provision_account
+from infrastructure.customer_service_client import CustomerServiceClient
 
 router = APIRouter(prefix="/internal/registrations", tags=["Internal registration"])
 
@@ -44,31 +45,36 @@ def register_customer(
     work: AccountWorkDependency,
     request: Request,
     trusted: TrustedRegistration,
+    customers: Annotated[CustomerServiceClient, Depends(get_registration_customer_client)],
 ) -> dict[str, UUID | str]:
     # Only the authenticated coordinator establishes this identity. Browser actors/IDs
     # are never accepted on the public registration contract.
     from fastapi import Response
 
     account = provision_account(
-        payload, CurrentActor(actor_id, "CBS", ActorType.CUSTOMER), work, request, Response()
+        payload,
+        CurrentActor(actor_id, "CBS", ActorType.CUSTOMER),
+        work,
+        request,
+        Response(),
+        customers,
+        attested_registration=True,
     )
     return {"actor_id": actor_id, "customer_id": account.customer_id, "status": "LINKED"}
 
 
 @router.get("/{actor_id}")
 def registration_status(
-    actor_id: UUID, work: AccountWorkDependency, trusted: TrustedRegistration
+    actor_id: UUID,
+    work: AccountWorkDependency,
+    trusted: TrustedRegistration,
+    customers: Annotated[CustomerServiceClient, Depends(get_registration_customer_client)],
 ) -> dict[str, UUID | str]:
+    customer_id = customers.resolve_customer_id(actor_id)
+    if customer_id is None:
+        raise HTTPException(status_code=409, detail="Registration incomplete")
     with work:
-        work.onboardings.lock_actor(actor_id)
-        receipt = work.onboardings.get(actor_id)
-        link = work.links.get_by_actor_id_for_update(actor_id)
-        if (
-            receipt is None
-            or receipt.account_id is None
-            or link is None
-            or link.customer_id != receipt.customer_id
-            or work.accounts.get_by_id(receipt.account_id) is None
-        ):
+        receipt = work.account_openings.get(customer_id)
+        if receipt is None or work.accounts.get_by_id(receipt.account_id) is None:
             raise HTTPException(status_code=409, detail="Registration incomplete")
-        return {"actor_id": actor_id, "customer_id": link.customer_id, "status": "LINKED"}
+        return {"actor_id": actor_id, "customer_id": customer_id, "status": "LINKED"}

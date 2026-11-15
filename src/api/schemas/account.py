@@ -10,7 +10,7 @@ class AccountCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     customer_id: UUID = Field(
-        description="Customer identity; existence is not yet verified in CRP."
+        description="Customer Service identity; existence is verified before opening an account."
     )
     currency: str = Field(
         default="CZK", description="Three uppercase letters; ISO membership unchecked."

@@ -1,4 +1,3 @@
-from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -9,7 +8,6 @@ from api.main import create_app
 from infrastructure.persistence.database import create_session_factory
 from infrastructure.persistence.models import AccountORM, ActorCustomerLinkORM
 from infrastructure.settings import Settings
-from ports.customer_onboarding import CustomerProvisioningUnavailable
 
 pytestmark = pytest.mark.integration
 PROFILE = {
@@ -30,24 +28,21 @@ HEADERS = {"Authorization": "Bearer " + KEY, "X-Service-ID": "auth-registration"
 
 @pytest.fixture
 def internal_registration(migrated_engine, isolated_database_settings):
+    from api.dependencies import get_registration_customer_client
+    from tests.customer_service_fake import CustomerServiceFake
+
     settings = Settings(
-        database_mode="postgres",
         persistence_backend="postgres",
         database_url=isolated_database_settings.database_url,
         registration_service_credential=KEY,
-        crp_customer_service_url="http://127.0.0.1:8098",
-        crp_customer_allow_insecure_http=True,
-        crp_customer_provisioning_credential="b" * 64,
         _env_file=None,
     )
-    with patch(
-        "infrastructure.crp_customer_provisioner.CRPCustomerProvisioner.ensure",
-        side_effect=lambda customer_id, profile: customer_id,
-    ) as provision:
-        with TestClient(
-            create_app(settings, internal=True), raise_server_exceptions=False
-        ) as client:
-            yield client, provision, settings
+    remote = CustomerServiceFake()
+    app = create_app(settings, internal=True)
+    app.dependency_overrides[get_registration_customer_client] = lambda: remote.client
+    with TestClient(app, raise_server_exceptions=False) as client:
+        yield client, remote, settings
+    remote.client.close()
 
 
 def test_internal_registration_requires_trusted_service_and_is_not_public(internal_registration):
@@ -74,7 +69,7 @@ def test_internal_registration_requires_trusted_service_and_is_not_public(intern
     assert client.get("/me").status_code == 404
     with TestClient(create_app(settings)) as public:
         assert public.put(path, json=PROFILE, headers=HEADERS).status_code == 404
-    provision.assert_not_called()
+    assert not provision.calls
 
 
 def test_internal_registration_creates_one_link_and_account_and_confirms(
@@ -88,7 +83,7 @@ def test_internal_registration_creates_one_link_and_account_and_confirms(
     assert first.status_code == 200
     again = client.put(path, json=PROFILE, headers=HEADERS)
     assert again.json() == first.json()
-    provision.assert_called_once()
+    assert len(provision.records) == 1
     assert client.get(path, headers=HEADERS).json() == {
         "actor_id": str(actor_id),
         "customer_id": first.json()["customer_id"],
@@ -96,18 +91,16 @@ def test_internal_registration_creates_one_link_and_account_and_confirms(
     }
     with create_session_factory(migrated_engine)() as db:
         assert db.scalar(select(func.count()).select_from(AccountORM)) == 1
-        assert (
-            str(db.get(ActorCustomerLinkORM, actor_id).customer_id) == first.json()["customer_id"]
-        )
+        assert db.get(ActorCustomerLinkORM, actor_id) is None
 
 
 def test_uncertain_customer_response_reuses_same_identity(internal_registration, migrated_engine):
     client, provision, _ = internal_registration
     path = f"/internal/registrations/{uuid4()}"
-    provision.side_effect = CustomerProvisioningUnavailable()
+    provision.lose_response = True
     assert client.put(path, json=PROFILE, headers=HEADERS).status_code == 503
-    customer_id = provision.call_args.args[0]
+    customer_id = next(iter(provision.records.values()))[0]
     assert client.get(path, headers=HEADERS).status_code == 409
-    provision.side_effect = lambda customer_id, profile: customer_id
+    provision.lose_response = False
     assert client.put(path, json=PROFILE, headers=HEADERS).status_code == 200
-    assert provision.call_args.args[0] == customer_id
+    assert next(iter(provision.records.values()))[0] == customer_id

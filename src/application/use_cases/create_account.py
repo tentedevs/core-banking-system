@@ -6,6 +6,7 @@ from application.account_numbers import InternalAccountNumberGenerator
 from domain.account.entities import Account
 from ports.account_number_generator import AccountNumberGenerator
 from ports.account_unit_of_work import AccountUnitOfWork
+from ports.customer_directory import CustomerDirectory, CustomerNotFound
 
 
 class CreateAccount:
@@ -13,13 +14,17 @@ class CreateAccount:
         self,
         unit_of_work: AccountUnitOfWork,
         number_generator: AccountNumberGenerator | None = None,
+        customers: CustomerDirectory | None = None,
     ) -> None:
         self.unit_of_work = unit_of_work
+        self.customers = customers
         self.number_generator = (
             number_generator if number_generator is not None else InternalAccountNumberGenerator()
         )
 
     def execute(self, command: CreateAccountCommand) -> Account:
+        if self.customers is not None and not self.customers.exists(command.customer_id):
+            raise CustomerNotFound("Customer not found")
         account = self._build(command)
         with self.unit_of_work as work:
             self._persist(work, account)

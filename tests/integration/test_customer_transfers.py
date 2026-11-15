@@ -6,6 +6,7 @@ import pytest
 from auth_client import ActorType, CurrentActor
 from sqlalchemy import select
 
+from application.customer_identity import VerifiedCustomerIdentity
 from application.transaction_messages import CreateTransferCommand
 from application.use_cases.create_customer_transfer import CreateCustomerTransfer
 from infrastructure.persistence.account_unit_of_work import SQLAlchemyAccountUnitOfWork
@@ -85,12 +86,20 @@ def test_receipt_cannot_bypass_current_ownership(customer_banking, migrated_engi
 
 
 def test_customer_transfers_preserve_concurrent_atomicity(customer_banking, migrated_engine):
-    _, _, (source, _, destination), _, (actor_a, actor_b, _), _, _ = customer_banking
+    _, _, (source, _, destination), _, (actor_a, actor_b, _), (customer_a, customer_b), _ = (
+        customer_banking
+    )
     sessions = create_session_factory(migrated_engine)
     before = balances(migrated_engine)
 
     def execute(actor_id, src, dst):
-        return CreateCustomerTransfer(SQLAlchemyAccountUnitOfWork(sessions)).execute(
+        return CreateCustomerTransfer(
+            SQLAlchemyAccountUnitOfWork(sessions),
+            VerifiedCustomerIdentity(
+                actor_id,
+                customer_a if actor_id == actor_a else customer_b,
+            ),
+        ).execute(
             CurrentActor(actor_id, "CBS", ActorType.CUSTOMER),
             CreateTransferCommand(src, dst, Decimal("10"), "CZK", str(uuid4())),
         )
@@ -100,3 +109,21 @@ def test_customer_transfers_preserve_concurrent_atomicity(customer_banking, migr
         b = pool.submit(execute, actor_b, destination.id, source.id)
         assert a.result(timeout=15).id != b.result(timeout=15).id
     assert balances(migrated_engine) == before
+
+
+def test_customer_service_outage_blocks_transfers_without_affecting_admin_reads(
+    customer_banking,
+    migrated_engine,
+):
+    from api.dependencies import get_customer_identity
+    from ports.customer_identity import CustomerIdentityUnavailable
+
+    client, state, (source, _, destination), _, _, _, app = customer_banking
+    identities = app.dependency_overrides[get_customer_identity]()
+    identities.resolve_customer_id.side_effect = CustomerIdentityUnavailable("unavailable")
+    before = balances(migrated_engine)
+    assert write(client, source.id, destination.id).status_code == 503
+    assert balances(migrated_engine) == before
+    state["actor"] = CurrentActor(uuid4(), "CBS", ActorType.ADMIN)
+    assert client.get("/accounts").status_code == 200
+    assert client.get("/me").json()["link_status"] == "NOT_APPLICABLE"

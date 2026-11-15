@@ -187,7 +187,7 @@ def test_unexpected_upstream_errors_fail_closed(resolver, status):
 def test_customer_read_endpoints_fail_closed_before_data_access(resolver, path):
     browser, calls, state = resolver
     state["error"] = httpx.ReadTimeout("private-session")
-    with patch("api.routers.customer_reads.SQLAlchemyActorCustomerLinkRepository") as links:
+    with patch("api.routers.customer_reads.AccountAccessPolicy") as links:
         response = browser.get(path)
         assert response.status_code == 503
         assert response.json() == {"detail": "Authentication service unavailable"}

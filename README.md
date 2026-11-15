@@ -1,5 +1,9 @@
 # core-banking-system
 
+Customer profiles, actor–Customer identity and onboarding now belong to Customer Service.
+See [Customer Service transition](docs/customer-service-transition.md) for the active
+contract, required configuration, compatibility endpoints and retirement plan.
+
 Independent Core Banking System (CBS) foundation, aligned with the verified
 Credit Risk Platform (CRP) backend architecture. This initialization implements
 application and persistence infrastructure plus the Accounts domain and persistence model.
@@ -486,17 +490,40 @@ storage. Logout failures do not claim revocation. 403 and 503 are not treated as
 expired sessions. No session tokens are read by JavaScript, stored locally or
 included in URLs; requests use the issuer's HttpOnly cookie.
 
-### Authentication routing
+### Local development routing
 
-The banking origin routes `/auth/*`, `/login`, `/register`, and `/assets/auth/*`
-to the public authentication service, and `/api/*` to CBS with the prefix removed.
-The fixed login success path `/account` returns to the SPA, which verifies both
-`/auth/me` and `/me` before selecting the ADMIN or CUSTOMER workspace.
-The private session-resolution listener is never a browser proxy target.
-Use HttpOnly cookies, a consistent browser origin, explicit trusted origins and
-HTTPS/Secure cookies in deployments. Backend service credentials must never be
-included in frontend variables. Vite's proxy is only a development adapter;
-deployment routing belongs to a trusted reverse proxy.
+Run the existing auth public listener on 8010, CBS on 8001 and Vite on 5174.
+Vite serves these fixed proxy routes (see `frontend/.env.example`):
+
+- `/auth/*`, `/login`, `/register`, `/assets/auth/*` → auth **public** listener.
+- `/api/*` → CBS, stripping `/api`.
+- Other paths → CBS SPA, including `/account`, the auth login page's fixed success
+  destination; the SPA then sends ADMIN to `/accounts` or CUSTOMER to `/me`.
+
+The private auth listener is never a frontend proxy target. Service credentials
+belong only in CBS backend configuration; never use VITE variables for them.
+Use the same browser hostname throughout (localhost and 127.0.0.1 are different
+cookie hosts). For local HTTP configure explicitly:
+
+```dotenv
+# login-auth-service environment (recreate its API container after changes)
+SESSION_COOKIE_SECURE=false
+LOGIN_TRUSTED_ORIGINS=["http://localhost:5174","http://127.0.0.1:5174"]
+
+# CBS backend environment
+BANKING_TRUSTED_ORIGINS=["http://localhost:5174","http://127.0.0.1:5174"]
+```
+
+Start the frontend with `make frontend-dev`, then open
+`http://localhost:5174/`. Login and registration use the existing auth-service
+pages through this same origin; no redirect target or token is supplied by the
+browser. A CUSTOMER created in auth must still be linked to an existing CRP
+Customer using the Phase 2 operator CLI before banking data can be shown.
+
+For deployment configure an equivalent reverse proxy on the banking origin,
+HTTPS/Secure cookies and explicit trusted origins. Vite's development proxy is
+not a production gateway. If signing out during an uncertain operation, review
+transaction history after signing back in before creating a new intent.
 
 ## Customer onboarding after login
 
@@ -533,15 +560,50 @@ CRP validation rejection allows correction. A CRP Customer can remain created
 while CBS is unavailable; retry completes the local transaction using the same
 UUID. There is no distributed transaction and no automatic deletion in CRP.
 
-### Onboarding service boundary
+### Local configuration
 
-Both CBS and CRP use PostgreSQL. Configure `CRP_CUSTOMER_SERVICE_URL` and the
-matching server-side provisioning credentials through protected environment
-configuration. The CRP provisioning route is enabled only when its credential
-is configured; it rejects browser-originated traffic and is never a frontend
-proxy target. Restrict internal traffic to trusted networks and use HTTPS across
-untrusted networks. Account opening finishes by refreshing `/me` and displaying
-the new savings account with a zero opening balance. Deposits remain ADMIN-only.
+Both CBS and CRP must use PostgreSQL. With their existing `.env` files prepared,
+run this development helper from CBS:
+
+```bash
+uv run --locked python scripts/configure_onboarding_local.py
+make db-migrate
+```
+
+It generates/reuses a matching secret for CBS
+`CRP_CUSTOMER_PROVISIONING_CREDENTIAL` and CRP
+`CUSTOMER_PROVISIONING_CREDENTIAL`, preserves DB credentials, restricts the files
+to owner access, and does not print the secret. It refuses to overwrite mismatched
+existing keys. Restart CRP and CBS after configuring:
+
+```bash
+# Terminal 1: CRP (existing database credentials must match database/.env)
+cd /Users/vicente/credit-risk-platform
+make db-up
+DATABASE_MODE=postgres PERSISTENCE_BACKEND=postgres make db-migrate
+DATABASE_MODE=postgres PERSISTENCE_BACKEND=postgres make dev
+
+# Terminal 2: CBS
+cd /Users/vicente/core-banking/core-banking-system
+make db-up
+make db-migrate
+make dev
+
+# Terminal 3: CBS frontend (auth service must also be running as documented above)
+make frontend-dev
+```
+
+Open `http://localhost:5174/`, register/login through the existing auth pages,
+complete the banking profile, and submit the account-opening form. On success
+CBS reloads `/me`, shows LINKED and lists the new savings account. Accounts start
+at zero; deposits remain administrative operations.
+
+The CRP provisioning route is enabled only when its separate service credential
+is configured. It rejects browser-originated traffic and is never a Vite proxy
+target. Use private networking locally and HTTPS across untrusted networks.
+Login-auth-service is unchanged by this workflow. The configuration helper is
+for localhost only; configure and rotate deployment secrets through your normal
+operator process.
 
 ## Coordinated registration from login-auth-service
 
@@ -556,15 +618,25 @@ Customers, Accounts, transactions and fallback onboarding for older unlinked Act
 The current Customer model has no first_name/last_name/gender/financial_currency; the form
 uses actual required business fields and the existing optional employment_months.
 
-Run registration on the separate `api.internal:app` listener, restricted to
-trusted backend services. The public app does not mount internal routes, and
-the private app exposes neither public banking routes nor OpenAPI. Requests
-require a dedicated registration credential and reject browser Origin/Sec-Fetch
-headers. Private `PUT /internal/registrations/{actor_id}` accepts OnboardingRequest
-and returns actor_id/customer_id/status=LINKED. `GET` at the same path confirms
-an existing completed account and matching link for operator recovery.
-Use separate keys for registration, session resolution and CRP provisioning.
-Keep keys server-side and rotate the corresponding services together.
+Configure (preserves DB settings and never prints secrets):
+
+```bash
+uv run --locked python scripts/configure_onboarding_local.py
+uv run --locked python scripts/configure_registration_local.py --auth-in-docker
+# Public CBS API remains make dev on 8001.
+# Separate terminal, reachable only by trusted backend services:
+uv run --locked uvicorn api.internal:app --app-dir src --host 0.0.0.0 --port 8012 --no-access-log
+```
+
+Without --auth-in-docker the helper configures auth to call 127.0.0.1:8012. With Docker
+Desktop it uses host.docker.internal; restrict the listener with host firewall/private
+networking. Do not publish/proxy port 8012. The public API does not register these routes;
+the private app has no public accounts/transactions routes or OpenAPI. Browser requests
+are rejected, even with a service credential. Private PUT /internal/registrations/{actor_id}
+accepts only OnboardingRequest and returns actor_id/customer_id/status=LINKED. GET at the
+same path confirms an existing completed account and matching link for operator recovery.
+Use a separate random key from session resolution/CRP provisioning, HTTPS outside trusted
+local development, and rotate both sides together while registration is paused.
 
 No cross-database transaction is assumed. A failure preserves the stable Customer UUID;
 repeating the original request recovers it without duplicating data. Auth keeps its Actor

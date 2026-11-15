@@ -2,7 +2,7 @@
 
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import ExitStack, asynccontextmanager
 
 from auth_client import AuthServiceClient
 from auth_client.fastapi_dependencies import build_current_actor_dependency
@@ -25,10 +25,13 @@ from application.use_cases.get_account import AccountNotFound
 from application.use_cases.get_transaction import TransactionNotFound
 from domain.account.exceptions import InvalidAccountData, InvalidAccountStateTransition
 from domain.account_balance.exceptions import InsufficientFunds, InvalidAccountBalanceData
+from infrastructure.customer_service_client import CustomerServiceClient
 from infrastructure.persistence.database import create_database_engine, create_session_factory
 from infrastructure.settings import Settings
 from ports.account_repository import AccountNumberConflict
 from ports.balance_repository import BalanceCurrencyMismatch, BalanceNotFound
+from ports.customer_directory import CustomerDirectoryUnavailable, CustomerNotFound
+from ports.customer_identity import CustomerIdentityUnavailable
 from ports.transaction_repository import IdempotencyConflict
 
 logger = logging.getLogger("uvicorn.error")
@@ -36,6 +39,30 @@ logger = logging.getLogger("uvicorn.error")
 
 def create_app(settings: Settings | None = None, *, internal: bool = False) -> FastAPI:
     settings = settings if settings is not None else Settings()
+    customer_client = (
+        CustomerServiceClient(
+            settings.customer_service_url,
+            settings.customer_service_credential.get_secret_value(),
+            service_id=settings.customer_service_id,
+            allow_insecure_http=settings.customer_service_allow_insecure_http,
+            timeout=settings.customer_service_request_timeout,
+        )
+        if settings.customer_service_url and settings.customer_service_credential
+        else None
+    )
+    registration_customer_client = (
+        CustomerServiceClient(
+            settings.customer_service_url,
+            settings.customer_service_registration_credential.get_secret_value(),
+            service_id=settings.customer_service_registration_id,
+            allow_insecure_http=settings.customer_service_allow_insecure_http,
+            timeout=settings.customer_service_request_timeout,
+        )
+        if internal
+        and settings.customer_service_url
+        and settings.customer_service_registration_credential
+        else None
+    )
     auth_client = (
         AuthServiceClient(
             base_url=settings.auth_service_internal_url,
@@ -54,15 +81,16 @@ def create_app(settings: Settings | None = None, *, internal: bool = False) -> F
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        try:
+        with ExitStack() as resources:
+            if engine is not None:
+                resources.callback(engine.dispose)
+            if auth_client is not None:
+                resources.callback(auth_client.close)
+            if registration_customer_client is not None:
+                resources.callback(registration_customer_client.close)
+            if customer_client is not None:
+                resources.callback(customer_client.close)
             yield
-        finally:
-            try:
-                if auth_client is not None:
-                    auth_client.close()
-            finally:
-                if engine is not None:
-                    engine.dispose()
 
     app = FastAPI(
         title="Core Banking System",
@@ -73,6 +101,8 @@ def create_app(settings: Settings | None = None, *, internal: bool = False) -> F
         openapi_url=None if internal else "/openapi.json",
     )
     app.state.settings = settings
+    app.state.customer_service_client = customer_client
+    app.state.registration_customer_client = registration_customer_client
     app.state.auth_client = auth_client
     app.state.current_actor_dependency = (
         build_current_actor_dependency(
@@ -160,6 +190,15 @@ def create_app(settings: Settings | None = None, *, internal: bool = False) -> F
     async def database_error(request: Request, exc: SQLAlchemyError) -> JSONResponse:
         logger.error("Database operation failed: %s", type(exc).__name__)
         return JSONResponse(status_code=503, content={"detail": "Database operation unavailable"})
+
+    @app.exception_handler(CustomerIdentityUnavailable)
+    @app.exception_handler(CustomerDirectoryUnavailable)
+    async def customer_service_unavailable(request: Request, exc: Exception) -> JSONResponse:
+        return JSONResponse(status_code=503, content={"detail": "Customer Service unavailable"})
+
+    @app.exception_handler(CustomerNotFound)
+    async def customer_not_found(request: Request, exc: CustomerNotFound) -> JSONResponse:
+        return JSONResponse(status_code=404, content={"detail": "Customer not found"})
 
     @app.exception_handler(Exception)
     async def internal_error(request: Request, exc: Exception) -> JSONResponse:

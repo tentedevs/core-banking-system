@@ -8,6 +8,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from infrastructure.persistence.repositories.account_movement_repository import (
     SQLAlchemyAccountMovementRepository,
 )
+from infrastructure.persistence.repositories.account_opening_repository import (
+    SQLAlchemyAccountOpeningRepository,
+)
 from infrastructure.persistence.repositories.account_repository import SQLAlchemyAccountRepository
 from infrastructure.persistence.repositories.actor_customer_link_repository import (
     SQLAlchemyActorCustomerLinkRepository,
@@ -29,12 +32,19 @@ class SQLAlchemyAccountUnitOfWork:
     def __init__(self, sessions: sessionmaker[Session]) -> None:
         self.sessions = sessions
         self._session: Session | None = None
+        self._account_openings: SQLAlchemyAccountOpeningRepository | None = None
         self._onboardings: SQLAlchemyCustomerOnboardingRepository | None = None
         self._links: SQLAlchemyActorCustomerLinkRepository | None = None
         self._accounts: SQLAlchemyAccountRepository | None = None
         self._balances: SQLAlchemyBalanceRepository | None = None
         self._transactions: SQLAlchemyTransactionRepository | None = None
         self._movements: SQLAlchemyAccountMovementRepository | None = None
+
+    @property
+    def account_openings(self) -> SQLAlchemyAccountOpeningRepository:
+        if self._account_openings is None:
+            raise RuntimeError("Unit of work must be entered before accessing account openings")
+        return self._account_openings
 
     @property
     def onboardings(self) -> SQLAlchemyCustomerOnboardingRepository:
@@ -76,6 +86,7 @@ class SQLAlchemyAccountUnitOfWork:
         if self._session is not None:
             raise RuntimeError("Unit of work is already active")
         self._session = self.sessions()
+        self._account_openings = SQLAlchemyAccountOpeningRepository(self._session)
         self._accounts = SQLAlchemyAccountRepository(self._session)
         self._links = SQLAlchemyActorCustomerLinkRepository(self._session)
         self._onboardings = SQLAlchemyCustomerOnboardingRepository(self._session)
@@ -105,6 +116,7 @@ class SQLAlchemyAccountUnitOfWork:
                 session.close()
             finally:
                 self._session = None
+                self._account_openings = None
                 self._accounts = None
                 self._links = None
                 self._onboardings = None

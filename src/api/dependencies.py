@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 from typing import Annotated, cast
+from uuid import UUID
 
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy.orm import Session, sessionmaker
@@ -19,9 +20,42 @@ from application.use_cases.list_accounts import ListAccounts
 from application.use_cases.list_transaction_movements import ListTransactionMovements
 from application.use_cases.list_transactions import ListTransactions
 from application.use_cases.reactivate_account import ReactivateAccount
+from infrastructure.customer_service_client import CustomerServiceClient
 from infrastructure.persistence.account_unit_of_work import SQLAlchemyAccountUnitOfWork
 from ports.account_number_generator import AccountNumberGenerator
 from ports.account_unit_of_work import AccountUnitOfWork
+from ports.customer_directory import CustomerDirectory
+from ports.customer_identity import CustomerIdentityResolver, CustomerIdentityUnavailable
+
+
+def get_customer_service_client(request: Request) -> CustomerServiceClient:
+    client = cast(CustomerServiceClient | None, request.app.state.customer_service_client)
+    if client is None:
+        raise HTTPException(status_code=503, detail="Customer Service unavailable")
+    return client
+
+
+class UnavailableCustomerIdentity:
+    def resolve_customer_id(self, actor_id: UUID) -> UUID | None:
+        raise CustomerIdentityUnavailable("Customer Service unavailable")
+
+
+def get_customer_identity(request: Request) -> CustomerIdentityResolver:
+    client = cast(CustomerServiceClient | None, request.app.state.customer_service_client)
+    return client if client is not None else UnavailableCustomerIdentity()
+
+
+def get_customer_directory(
+    client: Annotated[CustomerServiceClient, Depends(get_customer_service_client)],
+) -> CustomerDirectory:
+    return client
+
+
+def get_registration_customer_client(request: Request) -> CustomerServiceClient:
+    client = cast(CustomerServiceClient | None, request.app.state.registration_customer_client)
+    if client is None:
+        raise HTTPException(status_code=503, detail="Customer registration bridge unavailable")
+    return client
 
 
 def get_session(request: Request) -> Iterator[Session | None]:
@@ -59,8 +93,9 @@ def get_account_number_generator() -> AccountNumberGenerator:
 def get_create_account(
     work: AccountWorkDependency,
     numbers: Annotated[AccountNumberGenerator, Depends(get_account_number_generator)],
+    customers: Annotated[CustomerDirectory, Depends(get_customer_directory)],
 ) -> CreateAccount:
-    return CreateAccount(work, numbers)
+    return CreateAccount(work, numbers, customers)
 
 
 def get_get_account(work: AccountWorkDependency) -> GetAccount:
