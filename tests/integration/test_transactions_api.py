@@ -1,7 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from threading import Barrier
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -10,6 +10,7 @@ from sqlalchemy import event, text
 from sqlalchemy.orm import Session
 
 from api.authentication import require_banking_admin
+from api.dependencies import get_customer_directory
 from api.main import create_app
 from application.account_balance_service import AccountBalanceService
 from infrastructure.persistence.account_unit_of_work import SQLAlchemyAccountUnitOfWork
@@ -35,6 +36,9 @@ def app(migrated_engine, isolated_database_settings):
     )
 
     app.dependency_overrides[require_banking_admin] = lambda: None
+    directory = Mock()
+    directory.exists.return_value = True
+    app.dependency_overrides[get_customer_directory] = lambda: directory
     return app
 
 

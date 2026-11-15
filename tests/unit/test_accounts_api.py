@@ -43,6 +43,9 @@ def app(work):
     app = create_app(Settings(_env_file=None))
     app.dependency_overrides[require_banking_admin] = lambda: None
     app.dependency_overrides[dependencies.get_account_unit_of_work] = lambda: work
+    directory = Mock()
+    directory.exists.return_value = True
+    app.dependency_overrides[dependencies.get_customer_directory] = lambda: directory
     return app
 
 

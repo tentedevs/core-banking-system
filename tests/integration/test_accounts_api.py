@@ -1,3 +1,4 @@
+from unittest.mock import Mock
 from uuid import UUID, uuid4
 
 import pytest
@@ -6,7 +7,7 @@ from sqlalchemy import event, text
 from sqlalchemy.orm import Session
 
 from api.authentication import require_banking_admin
-from api.dependencies import get_account_number_generator
+from api.dependencies import get_account_number_generator, get_customer_directory
 from api.main import create_app
 from infrastructure.settings import Settings
 from tests.account_fakes import FixedAccountNumberGenerator
@@ -25,6 +26,9 @@ def app(migrated_engine, isolated_database_settings):
     )
 
     app.dependency_overrides[require_banking_admin] = lambda: None
+    directory = Mock()
+    directory.exists.return_value = True
+    app.dependency_overrides[get_customer_directory] = lambda: directory
     return app
 
 

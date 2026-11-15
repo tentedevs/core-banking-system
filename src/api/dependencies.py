@@ -93,8 +93,9 @@ def get_account_number_generator() -> AccountNumberGenerator:
 def get_create_account(
     work: AccountWorkDependency,
     numbers: Annotated[AccountNumberGenerator, Depends(get_account_number_generator)],
+    customers: Annotated[CustomerDirectory, Depends(get_customer_directory)],
 ) -> CreateAccount:
-    return CreateAccount(work, numbers)
+    return CreateAccount(work, numbers, customers)
 
 
 def get_get_account(work: AccountWorkDependency) -> GetAccount:
