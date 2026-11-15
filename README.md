@@ -651,3 +651,36 @@ credentials, browser rejection, idempotent provisioning, and uncertain-result re
 REGISTRATION_AUTH_TEST_URL, REGISTRATION_CBS_TEST_URL, REGISTRATION_CRP_TEST_URL, each an
 isolated loopback test service backed by temporary *_test databases. It checks full form
 registration → login → /auth/me → /me LINKED → own account/zero balance → logout.
+
+
+## Evidencia bancaria para Credit Risk
+
+El listener interno expone GET /internal/risk/customers/{customer_id}/evidence.
+El listener público no incluye esta ruta. Arrancar el interno con:
+
+```sh
+uv run --locked uvicorn api.main:create_internal_app --factory --app-dir src --host 127.0.0.1 --port 8002
+```
+
+Configurar RISK_SERVICE_CREDENTIAL con una clave propia de 64 caracteres hex,
+distinta de las claves de registro, login y customers. CRP envía ese Bearer y
+X-Service-ID: crp-backend. Se rechazan navegadores con Origin/Sec-Fetch.
+No hay credencial por defecto ni permisos de escritura en este contrato.
+
+Parámetros: currency (tres mayúsculas), start/end conscientes de zona horaria,
+limit 1–100 y offset >=0. Se admite una ventana máxima de 366 días, inicio incluido
+fin excluido, con un máximo de 10.000 movimientos. La consulta filtra por cuentas
+del cliente y moneda; devuelve movimientos de transacciones POSTED/REVERSED,
+categoría, dirección, referencia a reversión y marca de transferencia propia.
+Se ordena por booked_at e id. No clasifica movimientos ni calcula ingresos.
+
+La respuesta incluye customer_id, currency, start, end, offset, has_more, items
+y reference. La huella sha256 se calcula sobre el conjunto completo de la ventana,
+por lo que todas sus páginas comparten referencia. CRP puede detectar cambios
+entre páginas y rechazar datos incoherentes. Esa huella no es un snapshot
+persistido ni una API de recuperación histórica. Una actualización de categoría
+o estado cambia la referencia. La lectura no modifica saldos ni transacciones.
+
+Los balances siguen siendo responsabilidad de core; no se convierten en ingresos
+mensuales para la evaluación. No se necesita una migración de esquema para este
+contrato de lectura.
