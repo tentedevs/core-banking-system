@@ -117,6 +117,9 @@ def create_app(settings: Settings | None = None, *, internal: bool = False) -> F
         app.include_router(auth_diagnostics_router)
     app.state.session_factory = create_session_factory(engine) if engine is not None else None
     if internal:
+        from api.routers.risk_evidence import router as risk_evidence_router
+
+        app.include_router(risk_evidence_router)
         if settings.registration_service_credential:
             app.include_router(internal_registration_router)
     else:
@@ -214,3 +217,7 @@ def create_app(settings: Settings | None = None, *, internal: bool = False) -> F
 
 
 app = create_app()
+
+
+def create_internal_app() -> FastAPI:
+    return create_app(internal=True)

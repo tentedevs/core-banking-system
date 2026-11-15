@@ -9,6 +9,8 @@ from sqlalchemy.exc import ArgumentError
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
+    risk_service_credential: SecretStr | None = None
+
     banking_trusted_origins: list[str] = []
     customer_service_url: str | None = None
     customer_service_credential: SecretStr | None = None
@@ -33,7 +35,11 @@ class Settings(BaseSettings):
     auth_allow_insecure_http: bool = False
     auth_debug_endpoint_enabled: bool = False
 
-    @field_validator("crp_customer_provisioning_credential", "registration_service_credential")
+    @field_validator(
+        "crp_customer_provisioning_credential",
+        "registration_service_credential",
+        "risk_service_credential",
+    )
     @classmethod
     def valid_customer_provisioning_key(cls, value: SecretStr | None) -> SecretStr | None:
         import re
