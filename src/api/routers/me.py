@@ -2,15 +2,13 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from auth_client import ActorType, CurrentActor
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel
 
 from api.authentication import get_current_actor
-from api.dependencies import SessionDependency
+from api.dependencies import get_customer_identity
 from application.customer_identity import ResolveCustomerIdentity
-from infrastructure.persistence.repositories.actor_customer_link_repository import (
-    SQLAlchemyActorCustomerLinkRepository,
-)
+from ports.customer_identity import CustomerIdentityResolver
 
 router = APIRouter(tags=["Identity"])
 
@@ -26,18 +24,14 @@ class MeResponse(BaseModel):
 @router.get("/me", response_model=MeResponse)
 def me(
     actor: Annotated[CurrentActor, Depends(get_current_actor)],
-    session: SessionDependency,
+    identities: Annotated[CustomerIdentityResolver, Depends(get_customer_identity)],
     response: Response,
 ) -> MeResponse:
     response.headers["Cache-Control"] = "no-store"
     customer_id = None
     status: Literal["LINKED", "PENDING_LINK", "NOT_APPLICABLE"] = "NOT_APPLICABLE"
     if actor.actor_type is ActorType.CUSTOMER:
-        if session is None:
-            raise HTTPException(status_code=503, detail="Identity persistence unavailable")
-        customer_id = ResolveCustomerIdentity(
-            SQLAlchemyActorCustomerLinkRepository(session)
-        ).resolve_customer_id(actor.actor_id)
+        customer_id = ResolveCustomerIdentity(identities).resolve_customer_id(actor.actor_id)
         status = "LINKED" if customer_id else "PENDING_LINK"
     return MeResponse(
         actor_id=actor.actor_id,

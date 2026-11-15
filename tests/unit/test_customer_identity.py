@@ -1,5 +1,4 @@
-from datetime import UTC, datetime
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from uuid import uuid4
 
 import httpx
@@ -8,10 +7,9 @@ from auth_client import ActorType, CurrentActor
 from fastapi.testclient import TestClient
 
 from api.authentication import get_current_actor
-from api.dependencies import get_session
+from api.dependencies import get_customer_identity
 from api.main import create_app
 from application.customer_identity import LinkActorToCustomer, ResolveCustomerIdentity
-from domain.customer_identity.entities import ActorCustomerLink
 from infrastructure.crp_customer_directory import CRPCustomerDirectory
 from infrastructure.settings import Settings
 from ports.customer_directory import CustomerDirectoryUnavailable, CustomerNotFound
@@ -21,15 +19,14 @@ from ports.customer_directory import CustomerDirectoryUnavailable, CustomerNotFo
 def test_customer_me_uses_persisted_mapping(linked):
     actor = CurrentActor(uuid4(), "CBS", ActorType.CUSTOMER)
     customer = uuid4()
-    link = ActorCustomerLink(actor.actor_id, customer, datetime.now(UTC)) if linked else None
     app = create_app(Settings(_env_file=None))
     app.dependency_overrides[get_current_actor] = lambda: actor
-    app.dependency_overrides[get_session] = lambda: Mock()
-    with patch("api.routers.me.SQLAlchemyActorCustomerLinkRepository") as repo:
-        repo.return_value.get_by_actor_id.return_value = link
-        with TestClient(app) as client:
-            response = client.get("/me", params={"customer_id": str(uuid4())})
-        repo.return_value.get_by_actor_id.assert_called_once_with(actor.actor_id)
+    identities = Mock()
+    identities.resolve_customer_id.return_value = customer if linked else None
+    app.dependency_overrides[get_customer_identity] = lambda: identities
+    with TestClient(app) as client:
+        response = client.get("/me", params={"customer_id": str(uuid4())})
+    identities.resolve_customer_id.assert_called_once_with(actor.actor_id)
     assert response.status_code == 200
     assert response.json() == {
         "actor_id": str(actor.actor_id),
@@ -102,7 +99,7 @@ def test_linking_nonexistent_customer_does_not_write():
 def test_lookup_and_linking_use_explicit_identifiers():
     repo, directory = Mock(), Mock()
     actor, customer = uuid4(), uuid4()
-    repo.get_by_actor_id.return_value = ActorCustomerLink(actor, customer, datetime.now(UTC))
+    repo.resolve_customer_id.return_value = customer
     assert ResolveCustomerIdentity(repo).resolve_customer_id(actor) == customer
     directory.exists.return_value = True
     LinkActorToCustomer(repo, directory).execute(actor, customer)

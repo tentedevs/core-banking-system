@@ -1,10 +1,17 @@
 import json
+from unittest.mock import Mock
 from uuid import uuid4
 
 import httpx
 import pytest
+from auth_client import ActorType, CurrentActor
+from fastapi.testclient import TestClient
 
+from api.authentication import get_current_actor
+from api.dependencies import get_customer_identity
+from api.main import create_app
 from infrastructure.customer_service_client import CustomerServiceClient
+from infrastructure.settings import Settings
 from ports.customer_directory import CustomerDirectoryUnavailable
 from ports.customer_identity import CustomerIdentityUnavailable
 from ports.customer_onboarding import (
@@ -144,3 +151,21 @@ def test_onboarding_forwards_verified_actor_proof_and_validates_result():
 
     with client_for(handler) as client:
         assert client.onboard(actor, {}, "CZK", "proof") == customer
+
+
+def test_me_uses_remote_identity_and_admin_does_not_require_customer_service():
+    actor = CurrentActor(uuid4(), "CBS", ActorType.CUSTOMER)
+    app = create_app(Settings(_env_file=None))
+    app.dependency_overrides[get_current_actor] = lambda: actor
+    with TestClient(app) as client:
+        assert client.get("/me").status_code == 503
+        identities = Mock()
+        identities.resolve_customer_id.return_value = None
+        app.dependency_overrides[get_customer_identity] = lambda: identities
+        assert client.get("/me").json()["link_status"] == "PENDING_LINK"
+        identities.resolve_customer_id.return_value = uuid4()
+        result = client.get("/me", params={"customer_id": str(uuid4())})
+        assert result.json()["customer_id"] == str(identities.resolve_customer_id.return_value)
+        app.dependency_overrides.pop(get_customer_identity)
+        actor = CurrentActor(uuid4(), "CBS", ActorType.ADMIN)
+        assert client.get("/me").json()["link_status"] == "NOT_APPLICABLE"
