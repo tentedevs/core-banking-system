@@ -98,4 +98,5 @@ def test_import_integrity_and_registered_metadata() -> None:
         "banking.transaction_requests",
         "banking.actor_customer_links",
         "banking.customer_onboardings",
+        "banking.customer_account_openings",
     }

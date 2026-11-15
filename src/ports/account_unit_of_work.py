@@ -2,6 +2,7 @@ from types import TracebackType
 from typing import Protocol, Self
 
 from ports.account_movement_repository import AccountMovementRepository
+from ports.account_opening_repository import AccountOpeningRepository
 from ports.account_repository import AccountRepository
 from ports.actor_customer_link_repository import ActorCustomerLinkRepository
 from ports.balance_repository import BalanceRepository
@@ -15,6 +16,9 @@ class AccountUnitOfWork(Protocol):
     Each application execution owns an instance. It must not be shared across
     concurrent executions. Multiple repository operations share its transaction.
     """
+
+    @property
+    def account_openings(self) -> AccountOpeningRepository: ...
 
     @property
     def onboardings(self) -> CustomerOnboardingRepository: ...

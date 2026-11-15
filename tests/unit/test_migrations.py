@@ -6,7 +6,7 @@ from infrastructure.persistence.models import Base
 
 def test_migration_configuration_registers_accounts() -> None:
     config = alembic_config()
-    assert ScriptDirectory.from_config(config).get_heads() == ["0006_create_customer_onboardings"]
+    assert ScriptDirectory.from_config(config).get_heads() == ["0007_customer_account_openings"]
     assert set(Base.metadata.tables) == {
         "banking.accounts",
         "banking.transactions",
@@ -16,4 +16,5 @@ def test_migration_configuration_registers_accounts() -> None:
         "banking.transaction_requests",
         "banking.actor_customer_links",
         "banking.customer_onboardings",
+        "banking.customer_account_openings",
     }
