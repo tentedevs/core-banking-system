@@ -1,0 +1,11 @@
+name: core-banking-system-api
+
+services:
+  api:
+    build: .
+    ports:
+      - "127.0.0.1:8001:8000"
+    environment:
+      PERSISTENCE_BACKEND: ${PERSISTENCE_BACKEND:-memory}
+      DATABASE_MODE: ${DATABASE_MODE:-memory}
+      DATABASE_URL: ${DATABASE_URL:-}
